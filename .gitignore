@@ -1,0 +1,34 @@
+# Roblox place and model build files
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+
+# Roblox Studio lock and temporary files
+*.rbxl.lock
+*.rbxlx.lock
+*.lock
+
+# Rojo and LSP generated files
+sourcemap.json
+
+# Package managers and dependencies
+packages/
+DevPackages/
+node_modules/
+.pesde/
+
+# Tooling and linters cache
+.selene/
+.darklua/
+*.temp.luau
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE and Editor configs
+.idea/
+*.swp
+*.swo

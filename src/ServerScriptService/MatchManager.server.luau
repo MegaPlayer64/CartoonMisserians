@@ -47,6 +47,22 @@ local exitThread = nil
 local escapedToonflows = {}  -- [Player] = true
 local tasksCompleted = 0
 local lmsPlayer = nil  -- [Player] ultimo sobreviviente Toonflow
+local exitTriggerConnection = nil
+
+local function getExitModel()
+	return currentMap and (currentMap:FindFirstChild("Exit") or currentMap:FindFirstChild("ExitDoor"))
+end
+
+-- Abre (sin colisión, semitransparente) o cierra visualmente la puerta de salida.
+local function setExitVisuals(exitModel, open)
+	if not exitModel then return end
+	for _, part in ipairs(exitModel:GetDescendants()) do
+		if part:IsA("BasePart") and part.Name ~= "Trigger" then
+			part.CanCollide = not open
+			part.Transparency = open and 0.5 or 0
+		end
+	end
+end
 
 local function broadcastMatchState(state, extraData)
 	MatchStateRemote:FireAllClients(state, extraData or {})
@@ -119,7 +135,12 @@ local function applyCustomCharacterModel(player, characterName)
 		local hum = newChar:FindFirstChildOfClass("Humanoid")
 		if hum then
 			hum.Health = hum.MaxHealth
-			workspace.CurrentCamera.CameraSubject = hum
+			-- workspace.CurrentCamera es nil en el servidor (indexarlo daba error justo
+			-- después de destruir el personaje viejo); el cliente sigue su Character solo.
+			local camera = workspace.CurrentCamera
+			if camera then
+				camera.CameraSubject = hum
+			end
 		end
 
 		print("[MatchManager] Modelo personalizado asignado a " .. player.Name .. ": " .. characterName)
@@ -231,7 +252,10 @@ local function teleportToGameMap()
 
 	for player, role in pairs(assignedRoles) do
 		if typeof(player) == "Instance" and player:IsA("Player") then
-			setupPlayerRole(player, role)
+			local setupOk, setupErr = pcall(setupPlayerRole, player, role)
+			if not setupOk then
+				warn("[MatchManager] Error preparando a " .. player.Name .. ": " .. tostring(setupErr))
+			end
 			task.wait(0.2)
 
 			local char = player.Character
@@ -249,7 +273,8 @@ local function teleportToGameMap()
 end
 
 local function teleportToLobby()
-	local lobby = workspace.Maps:FindFirstChild("Lobby")
+	local maps = workspace:FindFirstChild("Maps")
+	local lobby = maps and maps:FindFirstChild("Lobby")
 	if not lobby then return end
 
 	local lobbySpawn = lobby:FindFirstChild("LobbySpawn")
@@ -331,6 +356,25 @@ end
 
 local function cleanupMatch()
 	TaskManager.Stop()
+
+	-- La salida no debe sobrevivir a la partida: antes el hilo del temporizador
+	-- seguía corriendo, podía marcar exitClosed en la PARTIDA SIGUIENTE (victoria
+	-- instantánea del Devilish) y la puerta quedaba abierta; además cada partida
+	-- añadía otra conexión Touched al mismo Trigger sin soltar la anterior.
+	if exitThread then
+		task.cancel(exitThread)
+		exitThread = nil
+	end
+	if exitOpen then
+		setExitVisuals(getExitModel(), false)
+		ExitTimerRemote:FireAllClients({ remaining = 0, open = false })
+	end
+	exitOpen = false
+	exitClosed = false
+	if exitTriggerConnection then
+		exitTriggerConnection:Disconnect()
+		exitTriggerConnection = nil
+	end
 	for player, _ in pairs(assignedRoles) do
 		if typeof(player) == "Instance" and player:IsA("Player") then
 			AbilityFramework.ClearPlayer(player)
@@ -355,7 +399,9 @@ local function activateLMS()
 				local stats = StatsModule.GetStats(char)
 				if stats then
 					local isAlive = stats:FindFirstChild("IsAlive")
-					if isAlive and isAlive.Value then
+					local isDowned = char:GetAttribute("IsDowned") or false
+					-- En pie: vivo Y no derribado (la condición de LMS usa el mismo criterio).
+					if isAlive and isAlive.Value and not isDowned then
 						lastToonflow = player
 						break
 					end
@@ -384,15 +430,8 @@ local function openExit(duration)
 	exitOpen = true
 	exitClosed = false
 
-	local exitModel = currentMap and (currentMap:FindFirstChild("Exit") or currentMap:FindFirstChild("ExitDoor"))
-	if exitModel then
-		for _, part in ipairs(exitModel:GetDescendants()) do
-			if part:IsA("BasePart") and part.Name ~= "Trigger" then
-				part.CanCollide = false
-				part.Transparency = 0.5
-			end
-		end
-	end
+	local exitModel = getExitModel()
+	setExitVisuals(exitModel, true)
 
 	ExitTimerRemote:FireAllClients({ remaining = duration, open = true })
 
@@ -410,14 +449,7 @@ local function openExit(duration)
 		exitOpen = false
 		exitClosed = true
 
-		if exitModel then
-			for _, part in ipairs(exitModel:GetDescendants()) do
-				if part:IsA("BasePart") and part.Name ~= "Trigger" then
-					part.CanCollide = true
-					part.Transparency = 0
-				end
-			end
-		end
+		setExitVisuals(exitModel, false)
 
 		ExitTimerRemote:FireAllClients({ remaining = 0, open = false })
 	end)
@@ -430,7 +462,10 @@ local function setupExitTrigger()
 	local trigger = exitModel:FindFirstChild("Trigger") or exitModel:FindFirstChild("ExitSpawn") or exitModel
 	if not trigger or not trigger:IsA("BasePart") then return end
 
-	trigger.Touched:Connect(function(otherPart)
+	if exitTriggerConnection then
+		exitTriggerConnection:Disconnect()
+	end
+	exitTriggerConnection = trigger.Touched:Connect(function(otherPart)
 		if not exitOpen then return end
 
 		local character = otherPart.Parent
@@ -552,7 +587,14 @@ local function runMapVoting()
 		mapName = MapSelection.PickRandomMap()
 	end
 
-	currentMap = workspace.Maps:FindFirstChild(mapName)
+	local maps = workspace:FindFirstChild("Maps")
+	currentMap = (maps and typeof(mapName) == "string") and maps:FindFirstChild(mapName) or nil
+	if not currentMap then
+		-- Antes se seguía con currentMap = nil: los jugadores se quedaban en el lobby
+		-- con roles asignados y la partida corría hasta agotar el tiempo.
+		warn("[MatchManager] No se encontró el mapa '" .. tostring(mapName) .. "': se cancela esta partida.")
+		return false
+	end
 	MapChosenRemote:FireAllClients({ mapName = mapName })
 	return true
 end
@@ -728,9 +770,13 @@ local function runEnding(winner)
 		end
 	end
 
+	-- El HUD compara data.winner con "Toonflows"/"Devilish". Antes se enviaba el
+	-- resultado interno ("ToonflowsWin"/"DevilishWins"), así que el cartel final
+	-- siempre decía "¡EL DEVILISH GANA!", incluso cuando ganaban los Toonflows.
 	broadcastMatchState(currentMatchState, {
 		timer = MatchConfig.EndMatchDuration,
-		winner = winner,
+		winner = (winner == "ToonflowsWin") and "Toonflows" or "Devilish",
+		result = winner,
 	})
 
 	task.wait(MatchConfig.EndMatchDuration)
@@ -739,18 +785,41 @@ local function runEnding(winner)
 	cleanupMatch()
 end
 
+local function runMatchCycle()
+	runIntermission()
+
+	local roleSuccess = runRoleSelection()
+	if not roleSuccess then
+		return
+	end
+
+	if not runMapVoting() then
+		cleanupMatch()
+		return
+	end
+
+	local result = runInProgress()
+	runEnding(result)
+end
+
+-- Devuelve el servidor a un estado limpio tras un error a mitad de partida.
+local function recoverFromError()
+	pcall(BotController.ClearAllBots)
+	pcall(teleportToLobby)
+	pcall(cleanupMatch)
+	currentMatchState = MatchConfig.MatchState.Intermission
+end
+
+-- Antes, cualquier error en cualquier fase (p. ej. una recompensa, un teleport)
+-- terminaba este hilo y el servidor se quedaba sin partidas hasta reiniciarlo.
 local function matchLoop()
 	while true do
-		runIntermission()
-
-		local roleSuccess = runRoleSelection()
-		if not roleSuccess then
-			continue
+		local ok, err = pcall(runMatchCycle)
+		if not ok then
+			warn("[MatchManager] Error en el ciclo de partida, recuperando: " .. tostring(err))
+			recoverFromError()
+			task.wait(3) -- evita un bucle de errores a toda velocidad
 		end
-
-		runMapVoting()
-		local result = runInProgress()
-		runEnding(result)
 	end
 end
 
@@ -760,7 +829,8 @@ Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function(character)
 		if currentMatchState == MatchConfig.MatchState.Intermission then
 			task.wait(0.5)
-			local lobby = workspace.Maps:FindFirstChild("Lobby")
+			local maps = workspace:FindFirstChild("Maps")
+			local lobby = maps and maps:FindFirstChild("Lobby")
 			if lobby then
 				local lobbySpawn = lobby:FindFirstChild("LobbySpawn")
 				if lobbySpawn then

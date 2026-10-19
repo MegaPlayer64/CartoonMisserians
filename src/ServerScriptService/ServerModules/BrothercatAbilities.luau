@@ -193,14 +193,16 @@ AbilityFramework.Register({
 
 			-- Si no se encontro por raycast, buscar personajes cercanos (radio 5 studs)
 			if not hitCharacter then
-				for _, descendant in ipairs(workspace:GetDescendants()) do
-					if descendant:IsA("BasePart") and descendant.Name ~= "UltimaOpcion_Projectile" then
-						local partChar = descendant.Parent
-						local partHrp = partChar and partChar:FindFirstChild("HumanoidRootPart")
-						if partHrp and (partHrp.Position - endPoint).Magnitude < 5 then
-							hitCharacter = partChar
-							break
-						end
+				-- Consulta espacial acotada (antes: workspace:GetDescendants() completo en cada miss).
+				local nearParams = OverlapParams.new()
+				nearParams.FilterType = Enum.RaycastFilterType.Exclude
+				nearParams.FilterDescendantsInstances = { character, projectile }
+				for _, part in ipairs(workspace:GetPartBoundsInRadius(endPoint, 8, nearParams)) do
+					local partChar = part.Parent
+					local partHrp = partChar and partChar:FindFirstChild("HumanoidRootPart")
+					if partHrp and (partHrp.Position - endPoint).Magnitude < 5 then
+						hitCharacter = partChar
+						break
 					end
 				end
 			end

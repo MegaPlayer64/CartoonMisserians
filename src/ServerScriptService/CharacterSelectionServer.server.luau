@@ -67,7 +67,11 @@ SelectCharacterRemote.OnServerEvent:Connect(function(player, characterType, char
 		if not CharacterDatabase.IsValidToonflow(characterName) then
 			return
 		end
-		-- Asignar el atributo seguro en el servidor
+		-- Asignar el atributo seguro en el servidor. Guardamos el nombre CANÓNICO:
+		-- IsValid* acepta también el DisplayName, pero el resto del código compara con
+		-- Name (p. ej. Neuro/Trunks); con "Blazer" el Fame de Neuro nunca se inicializaba.
+		local toonData = CharacterDatabase.GetToonflow(characterName)
+		if toonData then characterName = toonData.Name end
 		player:SetAttribute("SelectedToonflow", characterName)
 		print("[CharacterSelection] " .. player.Name .. " selecciono Toonflow: " .. characterName)
 
@@ -75,7 +79,9 @@ SelectCharacterRemote.OnServerEvent:Connect(function(player, characterType, char
 		if not CharacterDatabase.IsValidDevilish(characterName) then
 			return
 		end
-		-- Asignar el atributo seguro en el servidor
+		-- Nombre canónico (ver comentario del Toonflow).
+		local devData = CharacterDatabase.GetDevilish(characterName)
+		if devData then characterName = devData.Name end
 		player:SetAttribute("SelectedDevilish", characterName)
 		print("[CharacterSelection] " .. player.Name .. " selecciono Devilish: " .. characterName)
 	end

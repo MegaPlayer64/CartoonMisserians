@@ -22,6 +22,8 @@ local HttpService = game:GetService("HttpService")
 
 local AchievementsAndMastery = require(game:GetService("ServerScriptService").ServerModules.AchievementsAndMastery)
 local CartoonsitosManager = require(ServerScriptService:WaitForChild("CartoonsitosManager"))
+local PlayerData = require(game:GetService("ServerScriptService").ServerModules.PlayerData)
+local CharacterDatabase = require(ReplicatedStorage.Framework.CharacterDatabase)
 
 local Remotes = ReplicatedStorage.Framework.Remotes
 local MasteryUpdateRemote = Remotes:WaitForChild("MasteryUpdate")
@@ -167,18 +169,31 @@ end
 ]]
 local function processMatchEnd(player, characterName, isWinner, isLMS)
 	if not (player and player:IsA("Player") and characterName) then return end
+	-- Sin perfil cargado no se toca nada (se perdería o se sobrescribiría al cargar).
+	if not PlayerData.isLoaded(player) then return end
 
+	-- Nombre canónico: la selección podía traer el DisplayName y partir la maestría en dos.
+	local characterData = CharacterDatabase.GetCharacterData(characterName)
+	if characterData then
+		characterName = characterData.Name
+	end
+
+	-- 1. Contar la partida y GUARDARLA ya: registerWin y addMasteryXP vuelven a leer
+	--    el atributo, así que antes este incremento se perdía y TotalMatches nunca subía.
 	local data = getPlayerData(player)
 	data.TotalMatches = data.TotalMatches + 1
+	setPlayerData(player, data)
 
 	if isWinner then
 		registerWin(player, characterName, isLMS)
 	end
 
-	-- Otorgar XP de maestria por participar en la partida
+	-- 2. Otorgar XP de maestria por participar en la partida
 	addMasteryXP(player, characterName, AchievementsAndMastery.XP_PER_MATCH)
 
-	-- Verificar logros
+	-- 3. Verificar logros con datos RECARGADOS: antes TotalWins llegaba sin la victoria
+	--    de esta partida y cada logro se desbloqueaba una partida tarde.
+	data = getPlayerData(player)
 	local stats = {
 		TotalWins = data.TotalWins,
 		BrothercatLMSCount = data.BrothercatLMSCount,
@@ -199,6 +214,9 @@ local function processMatchEnd(player, characterName, isWinner, isLMS)
 				player.Name, achievement.Name, achievement.CoinReward))
 		end
 	end
+
+	-- 4. Guardar ya: el fin de partida es el momento con más progreso nuevo.
+	PlayerData.saveNow(player)
 end
 
 -- == EXPONER FUNCIONES VIA BINDABLE PARA MATCHMANAGER ==
@@ -220,18 +238,39 @@ setupBindable()
 
 -- == INICIALIZACION DE JUGADORES ==
 
+local function defaultMasteryData()
+	return {
+		TotalWins = 0,
+		TotalMatches = 0,
+		BrothercatLMSCount = 0,
+		UnlockedAchievements = {},
+		CharacterMastery = {},
+		OwnedSkins = {},
+	}
+end
+
+-- MasteryData (si existía) la carga PlayerData. Solo cuando el perfil ya cargó y no
+-- había nada guardado ponemos el valor por defecto; antes se ponía al entrar y
+-- cualquier progreso se perdía al salir.
 local function initPlayer(player)
-	if not player:GetAttribute("MasteryData") then
-		local defaultData = {
-			TotalWins = 0,
-			TotalMatches = 0,
-			BrothercatLMSCount = 0,
-			UnlockedAchievements = {},
-			CharacterMastery = {},
-			OwnedSkins = {},
-		}
-		setPlayerData(player, defaultData)
+	local function ensureDefault()
+		if not player:GetAttribute("MasteryData") then
+			setPlayerData(player, defaultMasteryData())
+		end
 	end
+
+	if PlayerData.isLoaded(player) then
+		ensureDefault()
+		return
+	end
+
+	local connection
+	connection = player:GetAttributeChangedSignal("DataLoaded"):Connect(function()
+		if PlayerData.isLoaded(player) then
+			connection:Disconnect()
+			ensureDefault()
+		end
+	end)
 end
 
 Players.PlayerAdded:Connect(initPlayer)

@@ -8,6 +8,11 @@
 
 local StatsModule = {}
 
+-- Velocidad "de base" que dan ciertas condiciones mientras duran.
+local SSJ_SPEED_MULTIPLIER = 1.35
+local FAME_SPEED_MULTIPLIER = 1.25
+local FAME_SPEED_THRESHOLD = 45
+
 -- == ENUMERACION DE ESTADOS DE PERSONAJE ==
 StatsModule.CharacterState = {
 	Normal = "Normal",
@@ -74,12 +79,14 @@ function StatsModule.InitializeStats(character, role, config)
 			character:SetAttribute("Fame", 0)
 		end
 
-		-- SCELLS SYSTEM (Trunks pasiva)
-		if charName == "Trunks" then
-			createValue("SCells", "NumberValue", 0)
-			createValue("SCellsMax", "IntValue", 20)
-			createValue("IsSuperSaiyan", "BoolValue", false)
-		end
+	end
+
+	-- SCELLS SYSTEM (Trunks pasiva). Trunks es Toonflow: este bloque antes vivía
+	-- dentro del "if Devilish" y nunca se ejecutaba (las habilidades lo creaban a demanda).
+	if character:GetAttribute("CharacterName") == "Trunks" then
+		createValue("SCells", "NumberValue", 0)
+		createValue("SCellsMax", "IntValue", 20)
+		createValue("IsSuperSaiyan", "BoolValue", false)
 	end
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -149,8 +156,12 @@ function StatsModule.ApplyDamage(character, damage, ignoreDowned)
 				end
 
 				-- TEMPORIZADOR AUTOMÁTICO DE SANGRADO (BLEEDOUT)
+				-- Token: si lo reaniman y lo derriban otra vez, el temporizador anterior
+				-- queda invalidado (antes lo mataba antes de tiempo).
+				local bleedId = (character:GetAttribute("BleedId") or 0) + 1
+				character:SetAttribute("BleedId", bleedId)
 				task.delay(defaultBleed, function()
-					if character and character.Parent then
+					if character and character.Parent and character:GetAttribute("BleedId") == bleedId then
 						local currentStats = StatsModule.GetStats(character)
 						local currentState = currentStats and currentStats:FindFirstChild("State")
 						if currentState and currentState.Value == StatsModule.CharacterState.Downed then
@@ -212,6 +223,25 @@ function StatsModule.SetSpeedMultiplier(character, multiplier)
 	return true
 end
 
+-- Multiplicador que corresponde ahora mismo SIN efectos temporales:
+-- aturdido = 0, Super Saiyan = 1.35, Fame alta (Neuro) = 1.25, resto = 1.
+local function baselineSpeedMultiplier(character, stats)
+	local state = stats:FindFirstChild("State")
+	if state and state.Value == StatsModule.CharacterState.Stunned then
+		return 0
+	end
+	local ssj = stats:FindFirstChild("IsSuperSaiyan")
+	if ssj and ssj.Value then
+		return SSJ_SPEED_MULTIPLIER
+	end
+	if (character:GetAttribute("Fame") or 0) >= FAME_SPEED_THRESHOLD then
+		return FAME_SPEED_MULTIPLIER
+	end
+	return 1.0
+end
+
+-- Antes forzaba 1.0: terminar de interactuar con una tarea, o expirar una
+-- ralentización, anulaba un aturdimiento activo y los buffs de Trunks/Neuro.
 function StatsModule.ResetSpeedMultiplier(character)
 	local stats = StatsModule.GetStats(character)
 	if not stats then return false end
@@ -220,11 +250,12 @@ function StatsModule.ResetSpeedMultiplier(character)
 	local walkSpeed = stats:FindFirstChild("WalkSpeed")
 	if not (speedMult and walkSpeed) then return false end
 
-	speedMult.Value = 1.0
+	local multiplier = baselineSpeedMultiplier(character, stats)
+	speedMult.Value = multiplier
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.WalkSpeed = walkSpeed.Value
+		humanoid.WalkSpeed = walkSpeed.Value * multiplier
 	end
 
 	return true
@@ -334,12 +365,10 @@ function StatsModule.AddFame(character, amount)
 	local newFame = math.clamp(current + amount, 0, 100)
 	character:SetAttribute("Fame", newFame)
 
-	local wasAbove = current >= 45
-	local isAbove = newFame >= 45
-	if isAbove and not wasAbove then
-		StatsModule.SetSpeedMultiplier(character, 1.25)
-	elseif not isAbove and wasAbove then
-		StatsModule.ResetSpeedMultiplier(character)
+	local wasAbove = current >= FAME_SPEED_THRESHOLD
+	local isAbove = newFame >= FAME_SPEED_THRESHOLD
+	if isAbove ~= wasAbove then
+		StatsModule.ResetSpeedMultiplier(character) -- recalcula con el Fame ya actualizado
 	end
 
 	return true
@@ -351,12 +380,10 @@ function StatsModule.SetFame(character, value)
 	local current = character:GetAttribute("Fame") or 0
 	character:SetAttribute("Fame", clamped)
 
-	local wasAbove = current >= 45
-	local isAbove = clamped >= 45
-	if isAbove and not wasAbove then
-		StatsModule.SetSpeedMultiplier(character, 1.25)
-	elseif not isAbove and wasAbove then
-		StatsModule.ResetSpeedMultiplier(character)
+	local wasAbove = current >= FAME_SPEED_THRESHOLD
+	local isAbove = clamped >= FAME_SPEED_THRESHOLD
+	if isAbove ~= wasAbove then
+		StatsModule.ResetSpeedMultiplier(character) -- recalcula con el Fame ya actualizado
 	end
 
 	return true
@@ -420,12 +447,7 @@ function StatsModule.SetSuperSaiyan(character, enabled)
 	if not ss then return false end
 
 	ss.Value = enabled
-
-	if enabled then
-		StatsModule.SetSpeedMultiplier(character, 1.35)
-	else
-		StatsModule.ResetSpeedMultiplier(character)
-	end
+	StatsModule.ResetSpeedMultiplier(character) -- aplica 1.35 si está activo, 1.0 si no (y respeta aturdimiento)
 
 	return true
 end

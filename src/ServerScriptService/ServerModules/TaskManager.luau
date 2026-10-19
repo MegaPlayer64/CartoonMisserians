@@ -78,6 +78,26 @@ end
 	    onTaskCompleted(completed, total)
 	    onAllCompleted(completed, total)
 ]]
+-- Solo un Toonflow vivo, en pie y con Stats de partida puede interactuar con tareas.
+local function getEligibleCharacter(player)
+	local character = player and player.Character
+	if not character then return nil end
+
+	local stats = StatsModule.GetStats(character)
+	if not stats then return nil end
+
+	local role = stats:FindFirstChild("Role")
+	if not role or role.Value ~= StatsModule.Role.Toonflow then return nil end
+
+	local isAlive = stats:FindFirstChild("IsAlive")
+	if not isAlive or not isAlive.Value then return nil end
+
+	local state = stats:FindFirstChild("State")
+	if state and state.Value ~= StatsModule.CharacterState.Normal then return nil end
+
+	return character
+end
+
 function TaskManager.Start(currentMap, cb)
 	TaskManager.Stop()
 	callbacks = cb or {}
@@ -122,7 +142,9 @@ function TaskManager.Start(currentMap, cb)
 
 		-- Estado Vulnerable mientras se mantiene presionada la tecla E
 		prompt.PromptButtonHoldBegan:Connect(function(player)
-			local character = player and player.Character
+			-- Solo si puede interactuar: un Devilish o un jugador aturdido no debe
+			-- quedarse inmóvil ni alterar su velocidad con este evento.
+			local character = getEligibleCharacter(player)
 			if character then
 				StatsModule.SetSpeedMultiplier(character, 0)
 			end
@@ -142,15 +164,10 @@ function TaskManager.Start(currentMap, cb)
 				StatsModule.ResetSpeedMultiplier(character)
 			end
 
-			-- Bug 7: Only Toonflows can complete tasks (not Devilish)
-			local stats = StatsModule.GetStats(character)
-			if stats then
-				local role = stats:FindFirstChild("Role")
-				if role and role.Value == StatsModule.Role.Devilish then
-					return
-				end
-			end
-			if character:GetAttribute("Role") == "Devilish" or character:GetAttribute("IsDevilish") then
+			-- Solo un Toonflow vivo, en pie y con Stats de partida puede completar tareas.
+			-- (Antes: bastaba con no ser Devilish, así que jugadores derribados, aturdidos,
+			-- sin Stats o fuera de la partida también podían.)
+			if not getEligibleCharacter(player) then
 				return
 			end
 

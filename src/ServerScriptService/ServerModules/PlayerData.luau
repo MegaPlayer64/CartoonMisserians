@@ -4,7 +4,7 @@
 	Ubicación: ServerScriptService.ServerModules.PlayerData
 
 	Persistencia con DataStore de lo que antes vivía SOLO como atributos del
-	Player (y se perdía al salir): Coins, OwnedEmotes, EquippedEmotes.
+	Player (y se perdía al salir): Coins, OwnedEmotes, EquippedEmotes y MasteryData.
 
 	Los atributos siguen siendo el estado "en vivo" que lee el cliente (la UI ya
 	escucha GetAttributeChangedSignal). Este módulo:
@@ -35,6 +35,7 @@ local AUTOSAVE_SECONDS = 60
 local STARTING_COINS = 100
 local MAX_COINS = 1_000_000_000
 local EMOTE_SLOTS = 6
+local MAX_MASTERY_JSON_BYTES = 200_000 -- tope defensivo; el límite de DataStore es 4 MB por clave
 local IS_STUDIO = RunService:IsStudio()
 local LOAD_ATTEMPTS = if IS_STUDIO then 1 else 6
 local SAVE_ATTEMPTS = 4
@@ -44,6 +45,8 @@ export type Data = {
 	coins: number,
 	ownedEmotes: { string },
 	equippedEmotes: { string },
+	-- JSON de MasteryAndTrophyServer (maestrías, logros, skins). "" = sin datos aún.
+	masteryData: string,
 }
 
 type Session = { persist: boolean, saving: boolean }
@@ -59,6 +62,7 @@ local function defaults(): Data
 		coins = STARTING_COINS,
 		ownedEmotes = { "Happy", "Angry", "GG" },
 		equippedEmotes = { "Happy", "Angry", "GG", "", "", "" },
+		masteryData = "",
 	}
 end
 
@@ -97,6 +101,13 @@ local function sanitize(raw: any): Data
 	end
 	base.ownedEmotes = sanitizeStringList(raw.ownedEmotes, base.ownedEmotes, nil)
 	base.equippedEmotes = sanitizeStringList(raw.equippedEmotes, base.equippedEmotes, EMOTE_SLOTS)
+	local mastery = raw.masteryData
+	if type(mastery) == "string" and #mastery <= MAX_MASTERY_JSON_BYTES then
+		local ok, decoded = pcall(HttpService.JSONDecode, HttpService, mastery)
+		if ok and type(decoded) == "table" then
+			base.masteryData = mastery
+		end
+	end
 	base.version = SCHEMA_VERSION
 	return base
 end
@@ -124,6 +135,7 @@ local function snapshot(player: Player): Data
 		coins = player:GetAttribute("Coins"),
 		ownedEmotes = decodeList(player:GetAttribute("OwnedEmotes")),
 		equippedEmotes = decodeList(player:GetAttribute("EquippedEmotes")),
+		masteryData = player:GetAttribute("MasteryData"),
 	})
 end
 
@@ -131,6 +143,9 @@ local function applyToPlayer(player: Player, data: Data)
 	player:SetAttribute("Coins", data.coins)
 	player:SetAttribute("OwnedEmotes", HttpService:JSONEncode(data.ownedEmotes))
 	player:SetAttribute("EquippedEmotes", HttpService:JSONEncode(data.equippedEmotes))
+	if data.masteryData ~= "" then
+		player:SetAttribute("MasteryData", data.masteryData)
+	end
 	-- Siempre el último: los handlers esperan a este flag.
 	player:SetAttribute("DataLoaded", true)
 end

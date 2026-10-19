@@ -1,6 +1,6 @@
 --[[
 	NeuroAbilities (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.NeuroAbilities
+	Ubicacion: ServerScriptService.ServerModules.NeuroAbilities
 
 	Define las 3 habilidades del personaje DEVILISH "Neuro" (Lincoln Loud alterado):
 	  1. "CallOfStardoom"  -> Eleva/hover 2s, revela Toonflows cercanos, embiste. 20/30 dmg + 10/20 AoE. CD: 21s
@@ -16,13 +16,13 @@
 	Por ahora se usan placeholders visuales/sonoros via VFXModule.
 
 	Dependencias:
-	  - ReplicatedStorage.Framework.AbilityFramework
-	  - ReplicatedStorage.Framework.StatsModule
+	  - ServerScriptService.ServerModules.AbilityFramework
+	  - ServerScriptService.ServerModules.StatsModule
 	  - ReplicatedStorage.Framework.VFXModule
 ]]
 
-local AbilityFramework = require(game.ReplicatedStorage.Framework.AbilityFramework)
-local StatsModule = require(game.ReplicatedStorage.Framework.StatsModule)
+local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 local VFXModule = require(game.ReplicatedStorage.Framework.VFXModule)
 
 local Players = game:GetService("Players")

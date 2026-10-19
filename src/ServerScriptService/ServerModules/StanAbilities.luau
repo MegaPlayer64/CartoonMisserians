@@ -1,6 +1,6 @@
 --[[
 	StanAbilities (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.StanAbilities
+	Ubicacion: ServerScriptService.ServerModules.StanAbilities
 
 	Define las 4 habilidades del personaje DEVILISH "Stan.oma.png":
 	  Slot1 "RayoCorrupto"    -> Rayo que daña 30 + lanza Pop-ups corruptos al Toonflow. CD: 18s
@@ -21,8 +21,8 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
 
-local AbilityFramework = require(ReplicatedStorage.Framework.AbilityFramework)
-local StatsModule = require(ReplicatedStorage.Framework.StatsModule)
+local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 local VFXModule = require(ReplicatedStorage.Framework.VFXModule)
 
 local Remotes = ReplicatedStorage.Framework.Remotes

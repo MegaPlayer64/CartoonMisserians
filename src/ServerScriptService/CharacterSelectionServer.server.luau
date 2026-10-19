@@ -20,6 +20,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local CharacterDatabase = require(ReplicatedStorage.Framework.CharacterDatabase)
 
+local RateLimiter = require(game:GetService("ServerScriptService").ServerModules.RateLimiter)
 local Remotes = ReplicatedStorage.Framework.Remotes
 local SelectCharacterRemote = Remotes:WaitForChild("SelectCharacterRemote")
 
@@ -49,6 +50,8 @@ end
 	  3. No se confia en ningun dato del cliente sin validacion
 ]]
 SelectCharacterRemote.OnServerEvent:Connect(function(player, characterType, characterName)
+	if not RateLimiter.allow(player, "SelectCharacter", 3, 5) then return end
+
 	-- Validar tipos de argumentos
 	if typeof(characterType) ~= "string" or typeof(characterName) ~= "string" then
 		return

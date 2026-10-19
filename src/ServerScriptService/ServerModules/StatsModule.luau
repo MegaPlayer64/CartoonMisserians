@@ -1,6 +1,6 @@
 --[[
 	StatsModule (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.StatsModule
+	Ubicacion: ServerScriptService.ServerModules.StatsModule
 	
 	Gestiona las estadisticas, estados, dano, curacion, remates (Downed/Bleedout)
 	y sistemas especiales (Fame de Neuro y SCells de Trunks).

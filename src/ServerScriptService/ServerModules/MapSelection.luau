@@ -1,6 +1,6 @@
 --[[
 	MapSelection (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.MapSelection
+	Ubicacion: ServerScriptService.ServerModules.MapSelection
 
 	Gestiona el voto de mapa EXCLUSIVO del Devilish.
 	Tras la seleccion de personajes, el Devilish recibe 3 mapas aleatorios
@@ -16,6 +16,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local MatchConfig = require(ReplicatedStorage.Framework.MatchConfig)
+local RateLimiter = require(game:GetService("ServerScriptService").ServerModules.RateLimiter)
 
 local Remotes = ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Remotes")
 local MapVoteRequestRemote = Remotes:WaitForChild("MapVoteRequest")
@@ -87,6 +88,7 @@ function MapSelection.RunVote(devilishPlayer, options, duration)
 
 	connection = MapVoteResponseRemote.OnServerEvent:Connect(function(player, mapName)
 		if player ~= devilishPlayer or done then return end
+		if not RateLimiter.allow(player, "MapVote", 3, 5) then return end
 		if typeof(mapName) ~= "string" then return end
 
 		-- Validar que el mapa elegido este entre las opciones ofrecidas

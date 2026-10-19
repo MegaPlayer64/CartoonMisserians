@@ -7,8 +7,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 
-local AbilityFramework = require(ReplicatedStorage.Framework.AbilityFramework)
-local StatsModule = require(ReplicatedStorage.Framework.StatsModule)
+local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 local VFXModule = require(ReplicatedStorage.Framework.VFXModule)
 local BotController = require(game:GetService("ServerScriptService"):WaitForChild("BotController"))
 

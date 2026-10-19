@@ -1,6 +1,6 @@
 --[[
 	TakoritaAbilities (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.TakoritaAbilities
+	Ubicacion: ServerScriptService.ServerModules.TakoritaAbilities
 
 	Define las 3 habilidades del personaje TOONFLOW "Takorita" (Toonflow Support):
 	  1. "EmergenciaSevera"   -> Canalizacion 1.7s: cura 20-36 HP a un Toonflow aliado cercano (Cooldown: 32s)
@@ -11,13 +11,13 @@
 	Por ahora se usan placeholders visuales/sonoros via VFXModule.
 
 	Dependencias:
-	  - ReplicatedStorage.Framework.AbilityFramework
-	  - ReplicatedStorage.Framework.StatsModule
+	  - ServerScriptService.ServerModules.AbilityFramework
+	  - ServerScriptService.ServerModules.StatsModule
 	  - ReplicatedStorage.Framework.VFXModule
 ]]
 
-local AbilityFramework = require(game.ReplicatedStorage.Framework.AbilityFramework)
-local StatsModule = require(game.ReplicatedStorage.Framework.StatsModule)
+local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 local VFXModule = require(game.ReplicatedStorage.Framework.VFXModule)
 
 local Debris = game:GetService("Debris")

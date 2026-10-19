@@ -12,7 +12,7 @@
 	La tabla de objetivos golpeados es local a cada invocacion (ver HitboxSystem).
 
 	Dependencias:
-	  - ReplicatedStorage.Framework.StatsModule
+	  - ServerScriptService.ServerModules.StatsModule
 	  - ReplicatedStorage.Framework.MatchConfig
 	  - ReplicatedStorage.Framework.VFXModule
 	  - ServerScriptService.HitboxSystem
@@ -22,11 +22,12 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local StatsModule = require(ReplicatedStorage.Framework.StatsModule)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 local MatchConfig = require(ReplicatedStorage.Framework.MatchConfig)
 local VFXModule = require(ReplicatedStorage.Framework.VFXModule)
 local HitboxSystem = require(ServerScriptService.HitboxSystem)
 
+local RateLimiter = require(game:GetService("ServerScriptService").ServerModules.RateLimiter)
 local Remotes = ReplicatedStorage.Framework.Remotes
 local MeleeAttackRemote = Remotes:WaitForChild("MeleeAttack")
 local DebugHitboxRemote = Remotes:FindFirstChild("DebugHitbox")
@@ -49,6 +50,9 @@ local serverAttackState = {}
 	  5. La hitbox se calcula en el servidor (no se confia en el cliente)
 ]]
 MeleeAttackRemote.OnServerEvent:Connect(function(player)
+	-- Rate limit (primera línea): el cooldown real sigue en los Stats.
+	if not RateLimiter.allow(player, "MeleeAttack", 5, 6) then return end
+
 	-- Validar que el jugador existe y tiene personaje
 	if not player or not player.Character then return end
 

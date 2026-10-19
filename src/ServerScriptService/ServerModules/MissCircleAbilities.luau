@@ -1,6 +1,6 @@
 --[[
 	MissCircleAbilities (ModuleScript)
-	Ubicación: ReplicatedStorage.Framework.MissCircleAbilities
+	Ubicación: ServerScriptService.ServerModules.MissCircleAbilities
 
 	Define las 4 habilidades de la DEVILISH inicial "Miss Circle":
 	  1. "LinearThrust"     -> Estocada con el compás. Dash frontal, 20 daño + lentitud leve (2s). CD: 15s
@@ -14,8 +14,8 @@ local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 
-local AbilityFramework = require(ReplicatedStorage.Framework.AbilityFramework)
-local StatsModule = require(ReplicatedStorage.Framework.StatsModule)
+local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 
 local MissCircleAbilities = {}
 

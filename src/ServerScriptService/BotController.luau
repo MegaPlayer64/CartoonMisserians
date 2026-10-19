@@ -13,7 +13,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local StatsModule = require(ReplicatedStorage.Framework.StatsModule)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 
 local BotController = {}
 local activeBots = {}

@@ -1,6 +1,6 @@
 --[[
 	TaskManager (ModuleScript)
-	Ubicación: ReplicatedStorage.Framework.TaskManager
+	Ubicación: ServerScriptService.ServerModules.TaskManager
 
 	Gestiona las tareas interactivas distribuidas en el mapa.
 	Cada tarea usa un ProximityPrompt con la tecla 'E' (mantener presionada).
@@ -10,14 +10,14 @@
 
 	Dependencias:
 	  - ReplicatedStorage.Framework.MatchConfig
-	  - ReplicatedStorage.Framework.StatsModule
+	  - ServerScriptService.ServerModules.StatsModule
 	  - ReplicatedStorage.Framework.Remotes.TaskProgress (RemoteEvent)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local MatchConfig = require(ReplicatedStorage.Framework.MatchConfig)
-local StatsModule = require(ReplicatedStorage.Framework.StatsModule)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 
 local Remotes = ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Remotes")
 local TaskProgressRemote = Remotes:WaitForChild("TaskProgress")

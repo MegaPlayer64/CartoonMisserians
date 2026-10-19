@@ -12,6 +12,8 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 
 local CosmeticsDatabase = require(ReplicatedStorage.Framework.CosmeticsDatabase)
+local RateLimiter = require(game:GetService("ServerScriptService").ServerModules.RateLimiter)
+local PlayerData = require(game:GetService("ServerScriptService").ServerModules.PlayerData)
 
 local Remotes = ReplicatedStorage.Framework.Remotes
 local UseEmoteRemote = Remotes:WaitForChild("UseEmote")
@@ -21,7 +23,6 @@ local EquipEmoteRemote = Remotes:WaitForChild("EquipEmote")
 -- == CONFIGURACIÓN ==
 local EMOTE_COOLDOWN = 7 -- segundos
 local EMOTE_DISPLAY_TIME = 3 -- segundos visible
-local STARTING_COINS = 100
 
 -- == ESTADO POR JUGADOR ==
 local playerCooldowns = {} -- [player] = tick()
@@ -75,19 +76,9 @@ end
 
 -- == INICIALIZACIÓN DE JUGADOR ==
 
+-- Coins / OwnedEmotes / EquippedEmotes (valores iniciales y guardados) los
+-- carga PlayerData; aquí solo el estado local del script.
 local function initPlayer(player)
-	if not player:GetAttribute("Coins") then
-		player:SetAttribute("Coins", STARTING_COINS)
-	end
-
-	if not player:GetAttribute("OwnedEmotes") then
-		setOwnedEmotes(player, { "Happy", "Angry", "GG" })
-	end
-
-	if not player:GetAttribute("EquippedEmotes") then
-		setEquippedEmotes(player, { "Happy", "Angry", "GG", "", "", "" })
-	end
-
 	playerCooldowns[player] = 0
 end
 
@@ -224,6 +215,7 @@ local function playDance(player, character, danceId)
 end
 
 UseEmoteRemote.OnServerEvent:Connect(function(player, emoteId)
+	if not RateLimiter.allow(player, "UseEmote", 3, 5) then return end
 	if typeof(emoteId) ~= "string" or emoteId == "" then return end
 
 	-- Verificar cooldown
@@ -261,6 +253,12 @@ end)
 -- == LÓGICA DE BUY COSMETIC (RemoteFunction) ==
 
 BuyCosmeticRemote.OnServerInvoke = function(player, cosmeticId)
+	if not RateLimiter.allow(player, "BuyCosmetic", 2, 4) then
+		return false, "Demasiadas solicitudes."
+	end
+	if not PlayerData.isLoaded(player) then
+		return false, "Tus datos aún se están cargando."
+	end
 	if typeof(cosmeticId) ~= "string" or cosmeticId == "" then
 		return false, "ID inválido."
 	end
@@ -278,6 +276,9 @@ BuyCosmeticRemote.OnServerInvoke = function(player, cosmeticId)
 	-- Verificar coins
 	local coins = player:GetAttribute("Coins") or 0
 	local price = cosmeticData.Price
+	if typeof(price) ~= "number" or price ~= price or price < 0 then
+		return false, "Precio inválido."
+	end
 	if coins < price then
 		return false, "Coins insuficientes."
 	end
@@ -288,13 +289,19 @@ BuyCosmeticRemote.OnServerInvoke = function(player, cosmeticId)
 	table.insert(owned, cosmeticId)
 	setOwnedEmotes(player, owned)
 
+	-- Una compra no debe perderse por un crash antes del próximo autosave.
+	PlayerData.saveNow(player)
+
 	return true, "Compra exitosa!"
 end
 
 -- == LÓGICA DE EQUIP EMOTE (RemoteEvent) ==
 
 EquipEmoteRemote.OnServerEvent:Connect(function(player, slotIndex, emoteId)
-	if typeof(slotIndex) ~= "number" then return end
+	if not RateLimiter.allow(player, "EquipEmote", 5, 8) then return end
+	if not PlayerData.isLoaded(player) then return end
+	if typeof(slotIndex) ~= "number" or slotIndex ~= slotIndex then return end -- NaN pasa el chequeo de rango
+	if typeof(emoteId) ~= "string" then return end
 	slotIndex = math.floor(slotIndex)
 	if slotIndex < 1 or slotIndex > 6 then return end
 

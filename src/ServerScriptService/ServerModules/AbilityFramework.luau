@@ -1,6 +1,6 @@
 --[[
 	AbilityFramework (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.AbilityFramework
+	Ubicacion: ServerScriptService.ServerModules.AbilityFramework
 
 	Framework base para gestionar habilidades con Cooldowns, Cargas (Charges)
 	y Costos de Recursos (Absorption, Health, etc.).
@@ -121,7 +121,7 @@ function AbilityFramework.CanUse(player, abilityName, character)
 
 	-- Verificar costo de recurso
 	if abilityDef.CostType and abilityDef.CostAmount > 0 and character then
-		local StatsModule = require(game.ReplicatedStorage.Framework.StatsModule)
+		local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 		local stats = StatsModule.GetStats(character)
 		if not stats then
 			return false, "NoStats"
@@ -172,7 +172,7 @@ function AbilityFramework.Execute(player, abilityName, character, targetData)
 
 	-- Consumir recurso si aplica
 	if abilityDef.CostType and abilityDef.CostAmount > 0 then
-		local StatsModule = require(game.ReplicatedStorage.Framework.StatsModule)
+		local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 		if abilityDef.CostType == "Absorption" then
 			StatsModule.ConsumeAbsorption(character, abilityDef.CostAmount)
 		elseif abilityDef.CostType == "Health" then

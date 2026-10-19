@@ -9,7 +9,7 @@
 	- Persistencia mediante atributos en Player (JSON)
 
 	Dependencias:
-	  - ReplicatedStorage.Framework.AchievementsAndMastery
+	  - ServerScriptService.ServerModules.AchievementsAndMastery
 	  - ServerScriptService.CartoonsitosManager
 	  - ReplicatedStorage.Framework.Remotes.MasteryUpdate
 	  - ReplicatedStorage.Framework.Remotes.TrophyUnlock
@@ -20,7 +20,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local HttpService = game:GetService("HttpService")
 
-local AchievementsAndMastery = require(ReplicatedStorage.Framework.AchievementsAndMastery)
+local AchievementsAndMastery = require(game:GetService("ServerScriptService").ServerModules.AchievementsAndMastery)
 local CartoonsitosManager = require(ServerScriptService:WaitForChild("CartoonsitosManager"))
 
 local Remotes = ReplicatedStorage.Framework.Remotes

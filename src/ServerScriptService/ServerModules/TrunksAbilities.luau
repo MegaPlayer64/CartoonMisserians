@@ -1,6 +1,6 @@
 --[[
 	TrunksAbilities (ModuleScript)
-	Ubicación: ReplicatedStorage.Framework.TrunksAbilities
+	Ubicación: ServerScriptService.ServerModules.TrunksAbilities
 
 	Define las 3 habilidades del personaje TOONFLOW "Trunks":
 	  1. "ZSword"     -> Swing melee con espada Z. 25 daño + knockback. +5 SCells. CD: 20s
@@ -13,8 +13,8 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
 
-local AbilityFramework = require(game.ReplicatedStorage.Framework.AbilityFramework)
-local StatsModule = require(game.ReplicatedStorage.Framework.StatsModule)
+local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 local VFXModule = require(game.ReplicatedStorage.Framework.VFXModule)
 
 local TrunksAbilities = {}

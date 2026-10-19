@@ -1,6 +1,6 @@
 --[[
 	BrothercatAbilities (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.BrothercatAbilities
+	Ubicacion: ServerScriptService.ServerModules.BrothercatAbilities
 
 	Define las 3 habilidades del personaje TOONFLOW "Brothercat" (Zack Anderson):
 	  1. "HeredadoDeMama"   -> Buff de velocidad x3 por 3s (Cooldown: 37s)
@@ -11,13 +11,13 @@
 	Por ahora se usan placeholders visuales/sonoros via VFXModule.
 
 	Dependencias:
-	  - ReplicatedStorage.Framework.AbilityFramework
-	  - ReplicatedStorage.Framework.StatsModule
+	  - ServerScriptService.ServerModules.AbilityFramework
+	  - ServerScriptService.ServerModules.StatsModule
 	  - ReplicatedStorage.Framework.VFXModule
 ]]
 
-local AbilityFramework = require(game.ReplicatedStorage.Framework.AbilityFramework)
-local StatsModule = require(game.ReplicatedStorage.Framework.StatsModule)
+local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 local VFXModule = require(game.ReplicatedStorage.Framework.VFXModule)
 
 local Debris = game:GetService("Debris")

@@ -11,6 +11,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local RateLimiter = require(game:GetService("ServerScriptService").ServerModules.RateLimiter)
 local Remotes = ReplicatedStorage.Framework.Remotes
 local ToggleAFKRemote = Remotes:WaitForChild("ToggleAFK")
 
@@ -31,6 +32,7 @@ end
 
 -- Manejar toggle del cliente
 ToggleAFKRemote.OnServerEvent:Connect(function(player)
+	if not RateLimiter.allow(player, "ToggleAFK", 2, 3) then return end
 	local current = player:GetAttribute("IsAFK") or false
 	setAFKState(player, not current)
 end)

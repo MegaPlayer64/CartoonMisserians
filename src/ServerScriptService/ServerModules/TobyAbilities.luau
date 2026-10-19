@@ -1,6 +1,6 @@
 --[[
 	TobyAbilities (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.TobyAbilities
+	Ubicacion: ServerScriptService.ServerModules.TobyAbilities
 
 	Define las 3 habilidades + pasiva del personaje TOONFLOW "Toby Williams":
 	  PASIVA: "Amistacion" -> Curacion de 30 HP al conectar Bara Normal + Bara Fantasma seguidas
@@ -10,13 +10,13 @@
 	  3. "RayosLaserToby"   -> Canalizacion 3s + rayo con lentitud 0.5x + ceguera 3s (Cooldown: 40s)
 
 	Dependencias:
-	  - ReplicatedStorage.Framework.AbilityFramework
-	  - ReplicatedStorage.Framework.StatsModule
+	  - ServerScriptService.ServerModules.AbilityFramework
+	  - ServerScriptService.ServerModules.StatsModule
 	  - ReplicatedStorage.Framework.VFXModule
 ]]
 
-local AbilityFramework = require(game.ReplicatedStorage.Framework.AbilityFramework)
-local StatsModule = require(game.ReplicatedStorage.Framework.StatsModule)
+local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 local VFXModule = require(game.ReplicatedStorage.Framework.VFXModule)
 
 local Debris = game:GetService("Debris")

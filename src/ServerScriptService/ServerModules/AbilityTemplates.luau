@@ -1,6 +1,6 @@
 --[[
 	AbilityTemplates (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.AbilityTemplates
+	Ubicacion: ServerScriptService.ServerModules.AbilityTemplates
 
 	Define 3 plantillas de habilidades usando el AbilityFramework.
 	Estas habilidades se registran automaticamente al requerir este modulo.
@@ -10,8 +10,8 @@
 	3. "RayosLaser"        -> Projectil skillshot (Devilish)
 ]]
 
-local AbilityFramework = require(game.ReplicatedStorage.Framework.AbilityFramework)
-local StatsModule = require(game.ReplicatedStorage.Framework.StatsModule)
+local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
+local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 local VFXModule = require(game.ReplicatedStorage.Framework.VFXModule)
 
 -- == HABILIDAD 1: HEREDADO DE MAMA (Buff de velocidad temporal) ==

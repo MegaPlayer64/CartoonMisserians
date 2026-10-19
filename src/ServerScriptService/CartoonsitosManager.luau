@@ -21,6 +21,9 @@ local HttpService = game:GetService("HttpService")
 local Remotes = ReplicatedStorage.Framework.Remotes
 local CoinUpdateRemote = Remotes:WaitForChild("CoinUpdate")
 
+-- Persistencia (DataStore): PlayerData es el dueño de Coins y marca DataLoaded.
+local PlayerData = require(game:GetService("ServerScriptService").ServerModules.PlayerData)
+
 local CartoonsitosManager = {}
 
 -- == TABLA DE RECOMPENSAS ==
@@ -55,6 +58,10 @@ end
 function CartoonsitosManager.AddCoins(player, amount, reason)
 	if not (player and player:IsA("Player")) then return end
 	if typeof(amount) ~= "number" then return end
+	-- NaN e infinito pasan typeof == "number": rechazarlos aquí (no solo en Economy).
+	if amount ~= amount or amount == math.huge or amount == -math.huge then return end
+	-- Sin perfil cargado no se toca el saldo (se sobrescribiría al cargar).
+	if not PlayerData.isLoaded(player) then return end
 
 	local current = getCoins(player)
 	local newTotal = math.max(0, current + amount)
@@ -162,15 +169,29 @@ end
 
 -- == INICIALIZACION DE JUGADORES ==
 
-local function initPlayer(player)
-	if not player:GetAttribute("Coins") then
-		player:SetAttribute("Coins", 0)
+-- El saldo inicial y el saldo guardado los pone PlayerData (antes este script y
+-- CosmeticsServer fijaban Coins=0 / Coins=100 compitiendo entre sí).
+-- Cuando el perfil termina de cargar, empujamos el saldo al cliente.
+local function watchPlayer(player)
+	local function push()
+		CoinUpdateRemote:FireClient(player, getCoins(player))
+	end
+	if PlayerData.isLoaded(player) then
+		push()
+	else
+		local connection
+		connection = player:GetAttributeChangedSignal("DataLoaded"):Connect(function()
+			if PlayerData.isLoaded(player) then
+				connection:Disconnect()
+				push()
+			end
+		end)
 	end
 end
 
-Players.PlayerAdded:Connect(initPlayer)
+Players.PlayerAdded:Connect(watchPlayer)
 for _, p in ipairs(Players:GetPlayers()) do
-	initPlayer(p)
+	watchPlayer(p)
 end
 
 print("[CartoonsitosManager] Sistema de economia inicializado.")

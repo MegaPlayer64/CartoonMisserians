@@ -3,23 +3,12 @@
 -- los remotes son públicos y cualquier cliente puede dispararlos.
 -- Todo pasa por las mismas APIs que el juego real (Economy / Fishing).
 
-local RunService = game:GetService("RunService")
-
 local Net = require(script.Parent.Parent.Net)
 local Fishing = require(script.Parent.Fishing)
 local Economy = require(script.Parent.Economy)
+local DevAuth = require(script.Parent.Parent.Parent.ServerModules.DevAuth)
 
--- Añade aquí tu UserId para poder usar los comandos en servidores reales.
-local DEV_USER_IDS: { [number]: boolean } = {
-	-- [12345678] = true,
-}
-
-local function isAuthorized(player: Player): boolean
-	if RunService:IsStudio() then
-		return true
-	end
-	return DEV_USER_IDS[player.UserId] == true
-end
+local isAuthorized = DevAuth.isAuthorized
 
 local CheatCommands = {}
 

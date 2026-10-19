@@ -1,6 +1,6 @@
 --[[
 	AchievementsAndMastery (ModuleScript)
-	Ubicacion: ReplicatedStorage.Framework.AchievementsAndMastery
+	Ubicacion: ServerScriptService.ServerModules.AchievementsAndMastery
 
 	Base de datos del sistema de Trofeos/Logros y Maestrias de Personaje.
 	- Maestria: niveles 1 al 100 con formula de XP escalar (level * 200)

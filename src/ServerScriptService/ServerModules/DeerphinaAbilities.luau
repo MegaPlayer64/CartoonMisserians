@@ -113,7 +113,7 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		ensureCookieCharges(character)
 
@@ -210,7 +210,7 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		ensureCookieCharges(character)
 		local charges = character:GetAttribute("CookieCharges") or 0

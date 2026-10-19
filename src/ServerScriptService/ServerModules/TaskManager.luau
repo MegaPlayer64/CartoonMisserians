@@ -82,6 +82,7 @@ end
 local function getEligibleCharacter(player)
 	local character = player and player.Character
 	if not character then return nil end
+	if character:GetAttribute("Escaped") then return nil end
 
 	local stats = StatsModule.GetStats(character)
 	if not stats then return nil end

@@ -225,10 +225,10 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		task.wait(1)
 
@@ -288,10 +288,10 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local player = params.Player
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local bc = getBotController()
 		if not bc then
@@ -370,10 +370,10 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local player = params.Player
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		StatsModule.SetSpeedMultiplier(character, 0.5)
 
@@ -426,10 +426,10 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local player = params.Player
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local currentMode = character:GetAttribute("LaserModeActive") or false
 		local newMode = not currentMode

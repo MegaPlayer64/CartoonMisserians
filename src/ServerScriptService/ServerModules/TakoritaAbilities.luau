@@ -49,10 +49,10 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		-- Inmovilizar a Takorita durante la canalizacion
 		StatsModule.SetSpeedMultiplier(character, 0.0)
@@ -172,10 +172,10 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local player = params.Player
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local radius = params.AbilityDef.Range
 
@@ -247,10 +247,10 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local player = params.Player
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local placePosition = hrp.Position
 		local healRadius = 15

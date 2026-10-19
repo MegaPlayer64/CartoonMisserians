@@ -28,7 +28,7 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		-- Buscar al Toonflow más cercano
 		local targetToon = nil
@@ -89,7 +89,7 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		-- Detectar objetivo en frente
 		local origin = hrp.Position
@@ -148,7 +148,7 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local targetName = character:GetAttribute("LastTrackedToon")
 		local targetChar = targetName and workspace:FindFirstChild(targetName)
@@ -199,7 +199,7 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		-- Buscar Toonflow caído cerca
 		local spawnPos = hrp.CFrame * CFrame.new(0, 0, -5)

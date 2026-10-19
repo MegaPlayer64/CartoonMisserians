@@ -144,15 +144,14 @@ function AbilityFramework.CanUse(player, abilityName, character)
 end
 
 --[[
-	Ejecuta una habilidad en el servidor. Esta funcion asume que CanUse ya fue verificada.
+	Ejecuta una habilidad. CONTRATO de abilityDef.Execute:
+	  - nil / true  -> se ejecutó (se consume cooldown y recurso)
+	  - false, motivo -> NO se ejecutó (p. ej. falta el HumanoidRootPart): se REEMBOLSA
+	  - error (pcall) -> NO se ejecutó: se REEMBOLSA
 
-	Parametros:
-		player     -> Player que usa la habilidad
-		abilityName -> Nombre de la habilidad
-		character  -> Character del player
-		targetData -> Datos del objetivo (Vector3, CFrame, Part, etc.)
-
-	Retorna: success (bool), result (string)
+	Antes el recurso, la carga y el cooldown se gastaban ANTES de ejecutar y no se
+	devolvían si la habilidad fallaba: el jugador perdía la habilidad por un error del
+	servidor, y además el cliente no recibía ningún aviso.
 ]]
 function AbilityFramework.Execute(player, abilityName, character, targetData)
 	local abilityDef = AbilityFramework.Registry[abilityName]
@@ -170,17 +169,28 @@ function AbilityFramework.Execute(player, abilityName, character, targetData)
 		return false, "AbilityStateNotFound"
 	end
 
-	-- Consumir recurso si aplica
+	local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
+
+	-- Consumir recurso si aplica (anotando lo realmente pagado, para poder reembolsarlo)
+	local paidAbsorption = 0
+	local paidHealth = 0
 	if abilityDef.CostType and abilityDef.CostAmount > 0 then
-		local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
 		if abilityDef.CostType == "Absorption" then
-			StatsModule.ConsumeAbsorption(character, abilityDef.CostAmount)
+			if StatsModule.ConsumeAbsorption(character, abilityDef.CostAmount) then
+				paidAbsorption = abilityDef.CostAmount
+			end
 		elseif abilityDef.CostType == "Health" then
-			StatsModule.ApplyDamage(character, abilityDef.CostAmount, true)
+			if StatsModule.ApplyDamage(character, abilityDef.CostAmount, true) then
+				paidHealth = abilityDef.CostAmount
+			end
 		end
 	end
 
-	-- Marcar como usado
+	-- Marcar como usado (guardando el estado previo por si hay que revertir)
+	local previousCharges = abilityState.charges
+	local previousLastUsed = abilityState.lastUsed
+	local previousCasting = abilityState.casting
+
 	abilityState.charges = abilityState.charges - 1
 	abilityState.lastUsed = tick()
 
@@ -197,10 +207,29 @@ function AbilityFramework.Execute(player, abilityName, character, targetData)
 		AbilityDef = abilityDef,
 	}
 
-	-- Ejecutar en una coroutine para no bloquear el hilo principal
-	local success, err = pcall(abilityDef.Execute, params)
+	local success, result, reason = pcall(abilityDef.Execute, params)
+	local executed = success and result ~= false
 
-	-- Si tiene CastTime, restaurar cargas y estado de canalizacion despues
+	if not executed then
+		-- REVERTIR: la habilidad no llegó a ejecutarse con éxito
+		abilityState.charges = previousCharges
+		abilityState.lastUsed = previousLastUsed
+		abilityState.casting = previousCasting
+		if paidAbsorption > 0 then
+			StatsModule.AddAbsorption(character, paidAbsorption)
+		end
+		if paidHealth > 0 then
+			StatsModule.ApplyHeal(character, paidHealth)
+		end
+
+		if not success then
+			warn("[AbilityFramework] Error ejecutando " .. abilityName .. ": " .. tostring(result))
+			return false, "ExecutionError"
+		end
+		return false, reason or "NotExecuted"
+	end
+
+	-- Si tiene CastTime, restaurar el estado de canalizacion despues
 	if abilityDef.CastTime > 0 then
 		task.delay(abilityDef.CastTime, function()
 			if abilityState then
@@ -209,7 +238,7 @@ function AbilityFramework.Execute(player, abilityName, character, targetData)
 		end)
 	end
 
-	-- Restaurar una carga despues del cooldown
+	-- Restaurar una carga despues del cooldown (solo si se ejecutó)
 	local effectiveCooldown = abilityDef.Cooldown
 	if playerState.cooldownModifiers and playerState.cooldownModifiers[abilityName] then
 		effectiveCooldown = effectiveCooldown * playerState.cooldownModifiers[abilityName]
@@ -219,11 +248,6 @@ function AbilityFramework.Execute(player, abilityName, character, targetData)
 			abilityState.charges = math.min(abilityState.charges + 1, abilityDef.MaxCharges)
 		end
 	end)
-
-	if not success then
-		warn("[AbilityFramework] Error ejecutando " .. abilityName .. ": " .. tostring(err))
-		return false, "ExecutionError"
-	end
 
 	return true, "Executed"
 end

@@ -114,6 +114,9 @@ function StatsModule.ApplyDamage(character, damage, ignoreDowned)
 	local stats = StatsModule.GetStats(character)
 	if not stats then return false end
 
+	-- Un Toonflow que ya escapó por la salida es invulnerable (ver MatchManager).
+	if character:GetAttribute("Escaped") then return false end
+
 	local state = stats:FindFirstChild("State")
 	local health = stats:FindFirstChild("Health")
 	local isAlive = stats:FindFirstChild("IsAlive")

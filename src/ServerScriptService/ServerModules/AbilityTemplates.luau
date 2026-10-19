@@ -30,7 +30,7 @@ AbilityFramework.Register({
 
 	Execute = function(params)
 		local character = params.Character
-		if not character then return end
+		if not character then return false, "NoCharacter" end
 
 		-- == EFECTO VISUAL: Highlight verde/amarillo por la duracion del buff ==
 		VFXModule.SpawnSpeedBuffVFX(character, 5)
@@ -65,7 +65,7 @@ AbilityFramework.Register({
 
 	Execute = function(params)
 		local character = params.Character
-		if not character then return end
+		if not character then return false, "NoCharacter" end
 
 		-- == EFECTO VISUAL: Anillo esferico verde que se expande y desvanece ==
 		VFXModule.SpawnHealVFX(character, 1.5)
@@ -96,10 +96,10 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		-- targetData debe ser un Vector3 que indica la direccion del disparo
 		local direction

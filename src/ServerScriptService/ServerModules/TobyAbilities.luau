@@ -76,10 +76,10 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local placePosition
 		if typeof(targetData) == "Vector3" then
@@ -242,10 +242,10 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local direction = (typeof(targetData) == "Vector3") and (targetData - hrp.Position).Unit or hrp.CFrame.LookVector
 		local maxRange = params.AbilityDef.Range
@@ -313,10 +313,10 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local direction = (typeof(targetData) == "Vector3") and (targetData - hrp.Position).Unit or hrp.CFrame.LookVector
 		local maxRange = params.AbilityDef.Range
@@ -389,10 +389,10 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		StatsModule.SetSpeedMultiplier(character, 0.3)
 		VFXModule.SpawnChannelVFX(character, 3)

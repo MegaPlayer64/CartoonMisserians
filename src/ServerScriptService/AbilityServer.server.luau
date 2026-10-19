@@ -84,6 +84,8 @@ UseAbilityRemote.OnServerEvent:Connect(function(player, abilityName, targetData)
 	-- 2. Validar Personaje
 	if not player or not player.Character then return end
 	local character = player.Character
+	-- Un Toonflow que ya escapó está en la zona segura: no actúa.
+	if character:GetAttribute("Escaped") then return end
 
 	-- 3. Validar Registro de la Habilidad (silencioso: abilityName es input del cliente)
 	local abilityDef = AbilityFramework.Registry[abilityName]
@@ -132,6 +134,15 @@ UseAbilityRemote.OnServerEvent:Connect(function(player, abilityName, targetData)
 	-- 10. EJECUTAR (sin exigir rango, pero con el objetivo saneado)
 	local safeTarget = sanitizeTargetData(targetData, hrp)
 	local success, result = AbilityFramework.Execute(player, abilityName, character, safeTarget)
+
+	if not success then
+		-- El cooldown y el recurso ya fueron reembolsados por AbilityFramework.Execute;
+		-- avisamos al cliente (antes quedaba mostrando un cooldown que no existe).
+		AbilityResultRemote:FireClient(player, "AbilityFailed", {
+			abilityName = abilityName,
+			reason = result,
+		})
+	end
 
 	if success then
 		AbilityResultRemote:FireClient(player, "AbilitySuccess", {

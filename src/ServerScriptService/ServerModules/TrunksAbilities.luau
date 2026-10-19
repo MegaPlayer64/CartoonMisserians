@@ -201,12 +201,12 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		ensureSCellStats(character)
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local damage = 25
 		local swingRange = 12
@@ -299,12 +299,12 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		ensureSCellStats(character)
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local damagePerHit = 8
 		local totalProjectiles = 3
@@ -387,7 +387,7 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local player = params.Player
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local isSSJ = isSuperSaiyanActive(character)
 		local hum = character:FindFirstChildOfClass("Humanoid")

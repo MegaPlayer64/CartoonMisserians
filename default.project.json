@@ -2,28 +2,28 @@
   "name": "Cartoon Misserians",
   "tree": {
     "$className": "DataModel",
-
     "ServerScriptService": {
-      "$path": "src/ServerScriptService"
+      "$path": "src/ServerScriptService",
+      "$ignoreUnknownInstances": true
     },
-
     "ReplicatedStorage": {
-      "$path": "src/ReplicatedStorage"
+      "$path": "src/ReplicatedStorage",
+      "$ignoreUnknownInstances": true
     },
-
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "$path": "src/StarterPlayer/StarterPlayerScripts"
+        "$path": "src/StarterPlayer/StarterPlayerScripts",
+        "$ignoreUnknownInstances": true
       },
       "StarterCharacterScripts": {
-        "$path": "src/StarterPlayer/StarterCharacterScripts"
+        "$path": "src/StarterPlayer/StarterCharacterScripts",
+        "$ignoreUnknownInstances": true
       }
     },
-
     "StarterGui": {
-      "$path": "src/StarterGui"
+      "$path": "src/StarterGui",
+      "$ignoreUnknownInstances": true
     },
-
     "Workspace": {
       "$properties": {
         "FilteringEnabled": true

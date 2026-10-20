@@ -15,7 +15,6 @@ local expected = {
 	{ game.StarterGui, "MapVoteGUI", "ScreenGui" },
 	{ game.StarterGui, "AFKNotification", "ScreenGui" },
 	{ game.StarterGui, "DialogueGui", "ScreenGui" },
-	{ game.StarterGui, "Scripts", "ScreenGui" },
 	{ game.StarterGui.GlobalGUI, "ActionContainer", "Frame" },
 	{ game.ReplicatedStorage.Characters, "Brothercat", "Model" },
 	{ game.ReplicatedStorage.Characters, "Trunks", "Model" },

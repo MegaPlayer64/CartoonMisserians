@@ -29,3 +29,9 @@ El repo solo guarda **scripts**. Las GUI (ScreenGui con sus Frames) y los modelo
 ## Si añades una GUI nueva
 Crea su carpeta con un `init.meta.json` (`ScreenGui`, `ignoreUnknownInstances: true`) antes de
 poner scripts dentro.
+
+## Nota: GUI "Scripts" (PopUpHUD duplicado)
+`StarterGui/Scripts/PopUpHUD` era una copia antigua (44 líneas) del mismo `PopUpHUD` que está en
+`StarterPlayerScripts` (310 líneas). Ambos escuchaban `TriggerPopups`, así que cada ataque de Stan
+mostraba ventanas dobles. Se eliminó la copia antigua del repo; borra también el ScreenGui
+`Scripts` de tu place si solo contiene ese script.

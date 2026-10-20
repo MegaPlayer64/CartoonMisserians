@@ -12,7 +12,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
-local CharacterDatabase = require(ReplicatedStorage.Framework.CharacterDatabase)
+local CharacterDatabase = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("CharacterDatabase"))
 
 -- CONFIGURACIÓN DE MOVIMIENTO Y VELOCIDADES
 local NORMAL_SPEED = 16

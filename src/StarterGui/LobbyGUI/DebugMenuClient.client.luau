@@ -239,6 +239,8 @@ end)
 -- (los personajes pueden aparecer/desaparecer durante la partida)
 local RunService = game:GetService("RunService")
 
+local lastScan = 0
+
 RunService.Heartbeat:Connect(function()
 	if not showPlayerHitboxes then return end
 
@@ -253,7 +255,12 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 
-	-- Buscar nuevos personajes que no tengan SelectionBox
+	-- Buscar nuevos personajes que no tengan SelectionBox. workspace:GetDescendants() en
+	-- cada frame (60 veces por segundo) hundía los FPS: basta con hacerlo cada 0.5 s.
+	local now = os.clock()
+	if now - lastScan < 0.5 then return end
+	lastScan = now
+
 	for _, descendant in ipairs(workspace:GetDescendants()) do
 		if descendant:IsA("Model") and descendant:FindFirstChildOfClass("Humanoid") then
 			if not playerSelectionBoxes[descendant] then

@@ -17,7 +17,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local Remotes = ReplicatedStorage.Framework.Remotes
+local Remotes = ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Remotes")
 local TriggerPopups = Remotes:WaitForChild("TriggerPopups")
 
 -- == MENSAJES DE ERROR RETRO ESTILO WINDOWS ==

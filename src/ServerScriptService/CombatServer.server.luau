@@ -118,9 +118,9 @@ MeleeAttackRemote.OnServerEvent:Connect(function(player)
 		return
 	end
 
-	-- Enviar datos de depuracion de hitbox a todos los clientes
+	-- Datos de depuracion de hitbox: solo para desarrolladores (Studio / DevAuth)
 	if DebugHitboxRemote then
-		DebugHitboxRemote:FireAllClients({
+		require(game:GetService("ServerScriptService").ServerModules.DevAuth).fireAuthorized(DebugHitboxRemote, {
 			type = "Box",
 			cframe = hrp.CFrame * CFrame.new(0, 0, -attackRange.Value / 2),
 			size = Vector3.new(attackRange.Value * 2, attackRange.Value * 2, attackRange.Value * 2),

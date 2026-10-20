@@ -15,8 +15,8 @@ local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local gameGUI = script.Parent
 
-local CosmeticsDatabase = require(ReplicatedStorage.Framework.CosmeticsDatabase)
-local Remotes = ReplicatedStorage.Framework.Remotes
+local CosmeticsDatabase = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("CosmeticsDatabase"))
+local Remotes = ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Remotes")
 local UseEmoteRemote = Remotes:WaitForChild("UseEmote")
 
 -- == CONFIGURACIÓN ==

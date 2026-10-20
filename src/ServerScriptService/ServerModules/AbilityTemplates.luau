@@ -124,10 +124,10 @@ AbilityFramework.Register({
 		local origin = hrp.Position
 		local endPoint = rayResult and rayResult.Position or (origin + direction * maxRange)
 
-		-- Enviar datos de depuracion de hitbox a todos los clientes
+		-- Datos de depuracion de hitbox: solo para desarrolladores (Studio / DevAuth)
 		local debugRemote = game.ReplicatedStorage.Framework.Remotes:FindFirstChild("DebugHitbox")
 		if debugRemote then
-			debugRemote:FireAllClients({
+			require(game:GetService("ServerScriptService").ServerModules.DevAuth).fireAuthorized(debugRemote, {
 				type = "Ray",
 				position = origin,
 				endPoint = endPoint,

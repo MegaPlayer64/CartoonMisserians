@@ -14,7 +14,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 
 ReplicatedStorage:WaitForChild("Shared") -- esperar a que replique
 local Types = require(ReplicatedStorage.Shared.Types)
@@ -26,6 +26,7 @@ local MatchStateRemote =
 	ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Remotes"):WaitForChild("MatchState") :: RemoteEvent
 
 local C = Config.Fishing
+local KEY_ACTION = "FishingHookKeys"
 
 local FishingUI = {}
 
@@ -72,6 +73,14 @@ local function play(target: Instance, info: TweenInfo, goal: { [string]: any }):
 	end
 	local tween = TweenService:Create(target, info, goal)
 	live[target] = tween
+	-- Completed también se dispara al cancelar. Sin esto, cada instancia animada quedaba retenida
+	-- por `live` (el valor, el Tween, referencia a su propia clave): los textos flotantes destruidos
+	-- no se liberaban.
+	tween.Completed:Connect(function()
+		if live[target] == tween then
+			live[target] = nil
+		end
+	end)
 	tween:Play()
 	return tween
 end
@@ -380,7 +389,6 @@ local endsAt = 0
 local balanceAtStart = 0
 local shownSeconds = -1
 local frameConn: RBXScriptConnection? = nil
-local keyConns: { RBXScriptConnection } = {}
 local held: { [string]: boolean } = { upButton = false, downButton = false, upKey = false, downKey = false }
 
 local function showPanel(panel: CanvasGroup, scale: UIScale)
@@ -526,37 +534,40 @@ local function bindHold(button: TextButton, diamond: Frame, key: string)
 	end)
 end
 
-local function connectKeys()
-	for _, c in keyConns do
-		c:Disconnect()
+-- W/S/↑/↓ mueven el gancho. Con UserInputService el personaje TAMBIÉN caminaba (W/S son sus
+-- teclas de movimiento y no llegan marcadas como "processed"). ContextActionService con prioridad
+-- alta y Sink se queda con las teclas mientras dura la ronda.
+local function onKeyAction(
+	_actionName: string,
+	state: Enum.UserInputState,
+	input: InputObject
+): Enum.ContextActionResult?
+	local pressed = state == Enum.UserInputState.Begin
+	local released = state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel
+	if not pressed and not released then
+		return Enum.ContextActionResult.Sink
 	end
-	table.clear(keyConns)
-	table.insert(
-		keyConns,
-		UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
-			if processed then
-				return
-			end
-			if input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.Up then
-				held.upKey = true
-				refreshInput()
-			elseif input.KeyCode == Enum.KeyCode.S or input.KeyCode == Enum.KeyCode.Down then
-				held.downKey = true
-				refreshInput()
-			end
-		end)
-	)
-	table.insert(
-		keyConns,
-		UserInputService.InputEnded:Connect(function(input: InputObject)
-			if input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.Up then
-				held.upKey = false
-				refreshInput()
-			elseif input.KeyCode == Enum.KeyCode.S or input.KeyCode == Enum.KeyCode.Down then
-				held.downKey = false
-				refreshInput()
-			end
-		end)
+	if input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.Up then
+		held.upKey = pressed
+		refreshInput()
+	elseif input.KeyCode == Enum.KeyCode.S or input.KeyCode == Enum.KeyCode.Down then
+		held.downKey = pressed
+		refreshInput()
+	end
+	return Enum.ContextActionResult.Sink
+end
+
+local function connectKeys()
+	ContextActionService:UnbindAction(KEY_ACTION)
+	ContextActionService:BindActionAtPriority(
+		KEY_ACTION,
+		onKeyAction,
+		false,
+		Enum.ContextActionPriority.High.Value,
+		Enum.KeyCode.W,
+		Enum.KeyCode.S,
+		Enum.KeyCode.Up,
+		Enum.KeyCode.Down
 	)
 end
 
@@ -600,10 +611,7 @@ local function stopLoop()
 		frameConn:Disconnect()
 		frameConn = nil
 	end
-	for _, c in keyConns do
-		c:Disconnect()
-	end
-	table.clear(keyConns)
+	ContextActionService:UnbindAction(KEY_ACTION)
 	for key in held do
 		held[key] = false
 	end
@@ -750,15 +758,21 @@ end
 -- Holds a reference to the arcade prompt once it streams in.
 -- With StreamingEnabled, the Arcade Machine may not exist when init() runs.
 local arcadePrompt: ProximityPrompt? = nil
+local promptBlocked = false -- estado de partida: los prompts que lleguen por streaming lo respetan
+local connectedPrompts: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 
 local function connectArcadePrompt(prompt: ProximityPrompt)
+	if connectedPrompts[prompt] then
+		return
+	end
+	connectedPrompts[prompt] = true
 	arcadePrompt = prompt
 	prompt.Triggered:Connect(function(player: Player)
 		if player == Players.LocalPlayer and not root.Visible then
 			openGame()
 		end
 	end)
-	prompt.Enabled = true -- default: available during Intermission
+	prompt.Enabled = not promptBlocked -- disponible en Intermission
 end
 
 function FishingUI.init()
@@ -774,19 +788,16 @@ function FishingUI.init()
 	local prompt = findArcadePrompt()
 	if prompt then
 		connectArcadePrompt(prompt)
-	else
-		-- Watch for the prompt to stream in
-		local streamConn
-		streamConn = workspace.DescendantAdded:Connect(function(descendant: Instance)
-			if descendant:IsA("ProximityPrompt") and descendant.Name == "FishingPrompt" then
-				connectArcadePrompt(descendant :: ProximityPrompt)
-				if streamConn then
-					streamConn:Disconnect()
-					streamConn = nil
-				end
-			end
-		end)
 	end
+
+	-- Conexión PERMANENTE: con StreamingEnabled la máquina se descarga y se recarga como una
+	-- instancia nueva al alejarse y volver; antes la conexión se soltaba tras la primera vez y el
+	-- prompt dejaba de funcionar hasta volver a entrar. Se comprueba primero el nombre (barato).
+	workspace.DescendantAdded:Connect(function(descendant: Instance)
+		if descendant.Name == "FishingPrompt" and descendant:IsA("ProximityPrompt") then
+			connectArcadePrompt(descendant)
+		end
+	end)
 
 	-- Listen to MatchState for auto-close and ProximityPrompt toggling
 	MatchStateRemote.OnClientEvent:Connect(function(state: string, _data: any)
@@ -798,9 +809,9 @@ function FishingUI.init()
 		end
 
 		-- Change 2: ProximityPrompt disabled only during active match phases
+		promptBlocked = state == "RoleAssigned" or state == "InProgress" or state == "Ending"
 		if arcadePrompt then
-			local blocked = state == "RoleAssigned" or state == "InProgress" or state == "Ending"
-			arcadePrompt.Enabled = not blocked
+			arcadePrompt.Enabled = not promptBlocked
 		end
 	end)
 

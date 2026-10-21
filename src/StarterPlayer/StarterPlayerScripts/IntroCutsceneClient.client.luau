@@ -14,6 +14,11 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
+-- workspace.CurrentCamera puede reemplazarse; una referencia guardada al inicio quedaría obsoleta
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	camera = workspace.CurrentCamera
+end)
+
 -- == REMOTES ==
 local Remotes = ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Remotes")
 local MatchStateRemote = Remotes:WaitForChild("MatchState")
@@ -23,6 +28,8 @@ local cutsceneActive = false
 local cutscenePlayedThisMatch = false
 local cutsceneThread = nil
 local renderConn = nil
+local activeTweens = {} -- tweens de cámara en curso (se cancelan al limpiar)
+local bannerTween = nil
 
 local cachedDevilishPlayer = nil
 local cachedDevilishName = nil
@@ -96,6 +103,7 @@ local function showBanner(characterName, displayName)
 	if titleLabel then titleLabel.Text = "DEVILISH: " .. tostring(characterName) end
 	if subtitleLabel then subtitleLabel.Text = "JUGADO POR: " .. tostring(displayName) end
 	if bannerFrame then
+		if bannerTween then bannerTween:Cancel() end
 		bannerFrame.Visible = true
 		bannerFrame.BackgroundTransparency = 1
 		local tweenIn = TweenService:Create(
@@ -103,6 +111,7 @@ local function showBanner(characterName, displayName)
 			TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 			{ BackgroundTransparency = 0.35 }
 		)
+		bannerTween = tweenIn
 		tweenIn:Play()
 	end
 end
@@ -114,9 +123,10 @@ local function hideBanner()
 		TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 		{ BackgroundTransparency = 1 }
 	)
+	bannerTween = tweenOut
 	tweenOut:Play()
-	tweenOut.Completed:Connect(function()
-		if bannerFrame then bannerFrame.Visible = false end
+	tweenOut.Completed:Connect(function(playbackState)
+		if playbackState == Enum.PlaybackState.Completed and bannerFrame then bannerFrame.Visible = false end
 	end)
 end
 
@@ -134,6 +144,12 @@ local function cleanupCutscene()
 			task.cancel(threadToCancel)
 		end
 	end
+
+	-- Un tween en curso seguía escribiendo CFrame/FieldOfView y peleaba con la cámara normal
+	for _, tween in ipairs(activeTweens) do
+		tween:Cancel()
+	end
+	table.clear(activeTweens)
 
 	local localChar = player.Character
 	local localHum = localChar and localChar:FindFirstChildOfClass("Humanoid")
@@ -168,6 +184,8 @@ local function presetMariposaurio(devilishChar, hrp)
 		{ FieldOfView = 50 }
 	)
 
+	table.insert(activeTweens, posTween)
+	table.insert(activeTweens, fovTween)
 	posTween:Play()
 	fovTween:Play()
 end

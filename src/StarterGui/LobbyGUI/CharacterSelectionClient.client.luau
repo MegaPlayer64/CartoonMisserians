@@ -96,6 +96,7 @@ local function createCharacterButton(parent, characterData, isSelected)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	nameLabel.Font = Enum.Font.GothamBold
 	nameLabel.TextSize = 16
+	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	nameLabel.Parent = button
 
 	local descLabel = Instance.new("TextLabel")
@@ -108,6 +109,9 @@ local function createCharacterButton(parent, characterData, isSelected)
 	descLabel.TextXAlignment = Enum.TextXAlignment.Left
 	descLabel.Font = Enum.Font.Gotham
 	descLabel.TextSize = 12
+	descLabel.TextWrapped = true
+	descLabel.TextYAlignment = Enum.TextYAlignment.Top
+	descLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	descLabel.Parent = button
 
 	return button, stroke
@@ -131,6 +135,17 @@ end
 local function onCharacterClicked(characterType, characterName)
 	localSelection[characterType] = characterName
 	SelectCharacterRemote:FireServer(characterType, characterName)
+
+	-- El resaltado es optimista. Si el servidor descarta la petición (p. ej. por clics muy rápidos)
+	-- se resincroniza con el atributo real para que la UI no muestre una selección que no existe.
+	task.delay(1, function()
+		local attrName = (characterType == CharacterDatabase.CharacterType.Toonflow) and "SelectedToonflow" or "SelectedDevilish"
+		local actual = player:GetAttribute(attrName)
+		if actual and actual ~= localSelection[characterType] then
+			localSelection[characterType] = actual
+			updateButtonHighlight((characterType == CharacterDatabase.CharacterType.Toonflow) and toonButtons or devilishButtons, actual)
+		end
+	end)
 
 	if characterType == CharacterDatabase.CharacterType.Toonflow then
 		updateButtonHighlight(toonButtons, characterName)
@@ -247,8 +262,14 @@ local function buildSelectionPanel()
 	-- Panel principal centrado
 	local panel = Instance.new("Frame")
 	panel.Name = "Panel"
-	panel.Size = UDim2.new(0, 500, 0, 400)
-	panel.Position = UDim2.new(0.5, -250, 0.5, -200)
+	-- Antes: 500x400 px fijos; en un móvil apaisado (~390 px de alto) el panel se salía de la
+	-- pantalla y no se podía llegar al botón de cierre.
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Size = UDim2.new(0.94, 0, 0.9, 0)
+	panel.Position = UDim2.new(0.5, 0, 0.5, 0)
+	local panelLimit = Instance.new("UISizeConstraint")
+	panelLimit.MaxSize = Vector2.new(500, 400)
+	panelLimit.Parent = panel
 	panel.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 	panel.BackgroundTransparency = 0.05
 	panel.ZIndex = 11
@@ -303,7 +324,8 @@ local function buildSelectionPanel()
 
 	-- Cerrar al hacer clic en el backdrop
 	backdrop.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
 			backdrop.Visible = false
 		end
 	end)
@@ -397,6 +419,13 @@ local function connectInventoryButton()
 end
 
 connectInventoryButton()
+
+-- Si el lobby se oculta (empieza la partida) el panel se cierra; antes reaparecía abierto al volver.
+LobbyGUI:GetPropertyChangedSignal("Enabled"):Connect(function()
+	if not LobbyGUI.Enabled and selectionPanel then
+		selectionPanel.Visible = false
+	end
+end)
 
 -- == ESCUCHAR CAMBIOS DE ATRIBUTOS DESDE EL SERVIDOR ==
 player:GetAttributeChangedSignal("SelectedToonflow"):Connect(function()

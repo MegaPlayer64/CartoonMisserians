@@ -59,6 +59,8 @@ local function showVoteUI(options, duration)
 		if opt then
 			btn.Visible = true
 			btn.Text = opt.DisplayName or opt.Name
+			-- El servidor valida el voto contra opt.Name: enviar siempre ese valor, no el texto mostrado
+			btn:SetAttribute("MapName", opt.Name)
 			btn.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
 			btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 		else
@@ -98,7 +100,7 @@ for i, btn in ipairs(buttons) do
 		btn.BackgroundColor3 = Color3.fromRGB(100, 255, 120)
 		btn.TextColor3 = Color3.fromRGB(0, 0, 0)
 
-		MapVoteResponseRemote:FireServer(btn.Text)
+		MapVoteResponseRemote:FireServer(btn:GetAttribute("MapName") or btn.Text)
 		hideVote()
 	end)
 end

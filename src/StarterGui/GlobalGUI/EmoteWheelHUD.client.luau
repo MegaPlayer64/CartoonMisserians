@@ -231,6 +231,9 @@ function openWheel()
 	refreshWheel()
 	wheelFrame.Visible = true
 	wheelOpen = true
+	-- Las teclas 1-6 eligen emote con la rueda abierta: avisar a AbilityClient para que no
+	-- dispare además la habilidad del mismo número.
+	player:SetAttribute("EmoteWheelOpen", true)
 
 	-- Animación de entrada
 	for i = 1, 6 do
@@ -250,6 +253,7 @@ end
 function closeWheel()
 	wheelFrame.Visible = false
 	wheelOpen = false
+	player:SetAttribute("EmoteWheelOpen", false)
 end
 
 -- == INPUT ==

@@ -81,6 +81,8 @@ end
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
+	-- Con la rueda de emotes abierta, 1-4 eligen emote (EmoteWheelHUD): no lanzar habilidades.
+	if player:GetAttribute("EmoteWheelOpen") then return end
 
 	-- Verificar si la tecla presionada corresponde a un slot de habilidad
 	local abilityName = abilitySlots[input.KeyCode]

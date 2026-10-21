@@ -71,11 +71,15 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		requestMeleeAttack()
 	end
 
-	-- Soporte para tactil (movil): tap en pantalla
-	if input.UserInputType == Enum.UserInputType.Touch then
-		requestMeleeAttack()
-	end
+	-- (Antes cualquier toque en pantalla atacaba, incluido arrastrar para girar la cámara.
+	-- En móvil se ataca con el botón de MobileControls.)
 end)
+
+-- Entrada desde el botón táctil de ataque (MobileControls)
+local meleeInputRequest = Instance.new("BindableEvent")
+meleeInputRequest.Name = "MeleeInputRequest"
+meleeInputRequest.Parent = script.Parent
+meleeInputRequest.Event:Connect(requestMeleeAttack)
 
 -- == RECEPCION DE RESULTADOS DEL SERVIDOR ==
 

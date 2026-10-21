@@ -57,7 +57,35 @@ local currentCharacterName = nil
 	Obtiene el punto de objetivo para habilidades con direccion.
 	Para skillshots, usa la posicion del raton en el mundo 3D.
 ]]
+local function isTouchAiming()
+	if player:GetAttribute("ForceMobileControls") then return true end
+	return UserInputService.TouchEnabled and UserInputService.LastInputType == Enum.UserInputType.Touch
+end
+
 local function getTargetData()
+	-- En táctil, Mouse.Hit es el punto del mundo bajo el ÚLTIMO TOQUE (p. ej. un botón de la UI):
+	-- las habilidades salían hacia puntos aleatorios. Se apunta hacia donde mira la cámara.
+	if isTouchAiming() then
+		local character = player.Character
+		local hrp = character and character:FindFirstChild("HumanoidRootPart")
+		local camera = workspace.CurrentCamera
+		if hrp and camera then
+			local look = camera.CFrame.LookVector
+			local flat = Vector3.new(look.X, 0, look.Z)
+			if flat.Magnitude > 0.01 then
+				local aimPoint = hrp.Position + flat.Unit * 40
+
+				-- Bajar hasta el suelo, como haría el puntero del ratón
+				local params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Exclude
+				params.FilterDescendantsInstances = { character }
+				local result = workspace:Raycast(aimPoint + Vector3.new(0, 25, 0), Vector3.new(0, -80, 0), params)
+				return result and result.Position or aimPoint
+			end
+		end
+		return nil -- sin objetivo: el servidor usa hacia dónde mira el personaje
+	end
+
 	local mouse = player:GetMouse()
 	local mouseHit = mouse.Hit.Position
 
@@ -76,6 +104,16 @@ local function useAbility(abilityName)
 	local targetData = getTargetData()
 	UseAbilityRemote:FireServer(abilityName, targetData)
 end
+
+-- Entrada desde los controles táctiles (MobileControls): mismo camino que el teclado
+local abilityInputRequest = Instance.new("BindableEvent")
+abilityInputRequest.Name = "AbilityInputRequest"
+abilityInputRequest.Parent = script.Parent
+abilityInputRequest.Event:Connect(function(abilityName)
+	if typeof(abilityName) == "string" then
+		useAbility(abilityName)
+	end
+end)
 
 -- == DETECCION DE INPUT ==
 

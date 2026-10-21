@@ -135,7 +135,7 @@ connections[#connections + 1] = RunService.RenderStepped:Connect(function(dt)
 	local serverMult = statSpeedMult and statSpeedMult.Value or 1
 	local baseSpeed = statWalkSpeed and statWalkSpeed.Value or NORMAL_SPEED
 
-	local wantsToSprint = isSprintKeyPressed and isMoving and not isExhausted and stamina > 0 and serverMult > 0
+	local wantsToSprint = (isSprintKeyPressed or player:GetAttribute("MobileSprint") == true) and isMoving and not isExhausted and stamina > 0 and serverMult > 0
 
 	if wantsToSprint then
 		humanoid.WalkSpeed = baseSpeed * serverMult * (SPRINT_SPEED / NORMAL_SPEED)

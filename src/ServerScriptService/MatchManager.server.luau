@@ -238,6 +238,17 @@ local function setupPlayerRole(player, role)
 	character:SetAttribute("Escaped", nil) -- por si el personaje se reutiliza entre partidas
 	StatsModule.InitializeStats(character, role, config)
 	AbilityFramework.InitPlayer(player)
+
+	-- Estado propio de cada personaje: el Character puede reutilizarse entre partidas, y las cargas de
+	-- galletas de Deerphina, el modo láser de Stan o las marionetas de Mariposaurio no deben heredarse.
+	character:SetAttribute("CookieCharges", nil)
+	character:SetAttribute("LaserModeActive", nil)
+	character:SetAttribute("ActivePuppets", nil)
+
+	-- Pasiva de Stan ("Corrupción Inminente"): antes StartPassiveTrail no se llamaba desde ningún sitio
+	if characterName == "Stan.oma.png" and role == StatsModule.Role.Devilish then
+		require(game:GetService("ServerScriptService").ServerModules.StanAbilities).StartPassiveTrail(character)
+	end
 end
 
 local function teleportToGameMap()
@@ -694,6 +705,14 @@ local function runInProgress()
 					end
 				end
 			end
+		end
+
+		-- Contar los escapados desde escapedToonflows, no desde assignedRoles: un Toonflow que escapa y
+		-- luego se desconecta salía de assignedRoles y la partida pasaba de victoria de Toonflows a
+		-- "el Devilish eliminó a todos".
+		escapedCount = 0
+		for _ in pairs(escapedToonflows) do
+			escapedCount += 1
 		end
 
 		aliveToons = aliveInMapCount

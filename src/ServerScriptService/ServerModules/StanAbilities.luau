@@ -44,43 +44,88 @@ local StanAbilities = {}
 -- == COLOR TEMA DE STAN ==
 local STAN_COLOR = Color3.fromRGB(80, 0, 100)
 
+-- Personaje vivo, con Stats de partida y rol Toonflow que no haya escapado (los escapados son invulnerables)
+local function isValidToonflow(character)
+	if not character or not character.Parent or character:GetAttribute("Escaped") then return false end
+	local stats = StatsModule.GetStats(character)
+	if not stats then return false end
+	local role = stats:FindFirstChild("Role")
+	local isAlive = stats:FindFirstChild("IsAlive")
+	return role ~= nil and role.Value == StatsModule.Role.Toonflow and isAlive ~= nil and isAlive.Value
+end
+
+-- ¿Sigue Stan en condiciones de actuar? (vivo y sin aturdir/derribar). Se usa tras las cargas
+-- con espera: antes un Stan aturdido o muerto durante la carga disparaba igualmente.
+local function canStillAct(character)
+	if not (character and character.Parent) then return false end
+	local stats = StatsModule.GetStats(character)
+	if not stats then return false end
+	local isAlive = stats:FindFirstChild("IsAlive")
+	local state = stats:FindFirstChild("State")
+	if not (isAlive and isAlive.Value) then return false end
+	return state == nil or state.Value == StatsModule.CharacterState.Normal
+end
+
 ---------------------------------------------------------
 -- HELPER: APLICAR ESTADO ALTERADO INLINE
 ---------------------------------------------------------
+
+-- Daño por tiempo SIN apilar: si el efecto ya está activo solo se amplía su duración.
+-- Antes cada contacto con el rastro (Touched se dispara muchas veces por segundo) lanzaba otro
+-- hilo de veneno y el daño se multiplicaba por el número de toques.
+local activeDots = setmetatable({}, { __mode = "k" })
+
+local function applyDot(targetChar, effectName, duration, damagePerTick)
+	local effects = activeDots[targetChar]
+	if not effects then
+		effects = {}
+		activeDots[targetChar] = effects
+	end
+
+	local endsAt = os.clock() + duration
+	if effects[effectName] then
+		effects[effectName] = math.max(effects[effectName], endsAt)
+		return
+	end
+	effects[effectName] = endsAt
+
+	task.spawn(function()
+		while targetChar.Parent and effects[effectName] and os.clock() < effects[effectName] do
+			task.wait(0.5)
+			-- ApplyDamage devuelve false si el objetivo murió o escapó: el efecto termina
+			if not StatsModule.ApplyDamage(targetChar, damagePerTick) then break end
+		end
+		effects[effectName] = nil
+	end)
+end
+
 local function applyStatusEffect(targetChar, effectName, duration)
 	if not (targetChar and targetChar.Parent) then return end
 	duration = duration or 3
 
 	if effectName == "Poison" then
-		task.spawn(function()
-			local elapsed = 0
-			local tickRate = 0.5
-			local damagePerTick = 2
-			while elapsed < duration and targetChar and targetChar.Parent do
-				task.wait(tickRate)
-				elapsed = elapsed + tickRate
-				StatsModule.ApplyDamage(targetChar, damagePerTick)
-			end
-		end)
+		applyDot(targetChar, "Poison", duration, 2)
 	elseif effectName == "Burn" then
-		task.spawn(function()
-			local elapsed = 0
-			local tickRate = 0.5
-			local damagePerTick = 3
-			while elapsed < duration and targetChar and targetChar.Parent do
-				task.wait(tickRate)
-				elapsed = elapsed + tickRate
-				StatsModule.ApplyDamage(targetChar, damagePerTick)
-			end
-		end)
+		applyDot(targetChar, "Burn", duration, 3)
 	elseif effectName == "Slowness" then
+		-- No pisar un aturdimiento/derribo con una ralentización (SetSpeedMultiplier(0.5) lo anulaba)
+		local stats = StatsModule.GetStats(targetChar)
+		local state = stats and stats:FindFirstChild("State")
+		if not stats or (state and state.Value ~= StatsModule.CharacterState.Normal) then return end
+
+		-- Token: una ralentización más reciente no se cancela cuando caduca la anterior
+		local slowId = (targetChar:GetAttribute("SlowId") or 0) + 1
+		targetChar:SetAttribute("SlowId", slowId)
 		StatsModule.SetSpeedMultiplier(targetChar, 0.5)
 		task.delay(duration, function()
-			if targetChar and targetChar.Parent then
+			if targetChar.Parent and targetChar:GetAttribute("SlowId") == slowId then
 				StatsModule.ResetSpeedMultiplier(targetChar)
 			end
 		end)
 	elseif effectName == "Corruption" then
+		local previous = targetChar:FindFirstChild("CorruptionEffect")
+		if previous then previous:Destroy() end
+
 		local hl = Instance.new("Highlight")
 		hl.Name = "CorruptionEffect"
 		hl.FillColor = STAN_COLOR
@@ -104,18 +149,32 @@ end
 
 ---------------------------------------------------------
 -- PASIVA: CORRUPCION INMINENTE
+-- (MatchManager la inicia al asignar a Stan; antes nadie la llamaba)
 ---------------------------------------------------------
 function StanAbilities.StartPassiveTrail(character)
+	-- Identificador de ejecución: un hilo antiguo (personaje reutilizado entre partidas) se detiene
+	-- solo en cuanto se inicia uno nuevo, y todos paran al morir Stan o terminar la partida.
+	local runId = (character:GetAttribute("StanPassiveId") or 0) + 1
+	character:SetAttribute("StanPassiveId", runId)
+
+	local function stillActive()
+		if not (character and character.Parent) then return false end
+		if character:GetAttribute("StanPassiveId") ~= runId then return false end
+		local stats = StatsModule.GetStats(character)
+		local isAlive = stats and stats:FindFirstChild("IsAlive")
+		return isAlive ~= nil and isAlive.Value
+	end
+
 	task.spawn(function()
-		while character and character.Parent do
-			local humanoid = character:FindFirstChildOfClass("Humanoid")
-			if not humanoid or humanoid.Health <= 0 then break end
+		while true do
+			for _ = 1, 20 do -- cada 20 segundos
+				if not stillActive() then return end
+				task.wait(1)
+			end
 
-			task.wait(20) -- Cada 20 segundos
-
-			local startTime = tick()
-			while tick() - startTime < 5 do -- Dura 5 segundos soltando rastro
-				if not (character and character.Parent) then break end
+			local startTime = os.clock()
+			while os.clock() - startTime < 5 do -- dura 5 segundos soltando rastro
+				if not stillActive() then return end
 				local hrp = character:FindFirstChild("HumanoidRootPart")
 				if hrp then
 					StanAbilities.SpawnTrailPart(hrp.CFrame - Vector3.new(0, 2.5, 0), Vector3.new(3, 0.2, 3), 3)
@@ -140,14 +199,10 @@ function StanAbilities.SpawnTrailPart(cframe, size, poisonDuration)
 	part.Parent = workspace
 
 	part.Touched:Connect(function(otherPart)
-		local toonChar = otherPart.Parent
-		if not toonChar then return end
-		local stats = StatsModule.GetStats(toonChar)
-		if stats then
-			local role = stats:FindFirstChild("Role")
-			if role and role.Value == StatsModule.Role.Toonflow then
-				applyStatusEffect(toonChar, "Poison", poisonDuration or 3)
-			end
+		-- Ancestro Model (no Parent): un accesorio o parte anidada no debe librarse del veneno
+		local toonChar = otherPart:FindFirstAncestorOfClass("Model")
+		if toonChar and isValidToonflow(toonChar) then
+			applyDot(toonChar, "Poison", poisonDuration or 3, 2)
 		end
 	end)
 
@@ -156,6 +211,7 @@ end
 
 ---------------------------------------------------------
 -- M1 ADAPTATIVO (Cuerpo a Cuerpo / Taser Laser)
+-- CombatServer llama aquí cuando Stan tiene el modo láser activo (CambioArma).
 ---------------------------------------------------------
 function StanAbilities.ExecuteM1(character, targetCFrame)
 	local isLaserMode = character:GetAttribute("LaserModeActive") or false
@@ -163,43 +219,47 @@ function StanAbilities.ExecuteM1(character, targetCFrame)
 	if isLaserMode then
 		task.wait(1) -- 1 segundo de carga/retraso
 
+		-- Revalidar tras la carga: aturdido, derribado o muerto => el láser no sale
+		if not canStillAct(character) then return end
+
 		local hrp = character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return end
 
 		local rayOrigin = hrp.Position
 		local rayDirection = hrp.CFrame.LookVector * 60
 		local raycastParams = RaycastParams.new()
-		raycastParams.FilterDescendantsInstances = {character}
+		raycastParams.FilterDescendantsInstances = { character }
 		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
 		local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-		if result and result.Instance then
-			local hitChar = result.Instance.Parent
-			local hum = hitChar and hitChar:FindFirstChildOfClass("Humanoid")
-			if hum then
-				local origin = hrp.Position + Vector3.new(0, 1, 0)
-				VFXModule.SpawnProjectileVFX(origin, result.Position, STAN_COLOR)
-				StatsModule.ApplyDamage(hitChar, 15)
+		local hitChar = result and result.Instance:FindFirstAncestorOfClass("Model")
+		if hitChar and isValidToonflow(hitChar) then
+			local origin = hrp.Position + Vector3.new(0, 1, 0)
+			VFXModule.SpawnProjectileVFX(origin, result.Position, STAN_COLOR)
 
-				local effects = {"Slowness", "Burn", "Corruption"}
-				local randomEffect = effects[math.random(1, #effects)]
-				applyStatusEffect(hitChar, randomEffect, 1)
+			if StatsModule.ApplyDamage(hitChar, 15) then
+				local effects = { "Slowness", "Burn", "Corruption" }
+				applyStatusEffect(hitChar, effects[math.random(1, #effects)], 1)
 			end
 		end
 	else
 		local hrp = character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return end
 
+		local forward = hrp.CFrame.LookVector
 		for _, target in ipairs(workspace:GetChildren()) do
-			if target ~= character and target:FindFirstChildOfClass("Humanoid") then
+			if target ~= character and isValidToonflow(target) then
 				local targetHrp = target:FindFirstChild("HumanoidRootPart")
 				if targetHrp then
-					local dist = (targetHrp.Position - hrp.Position).Magnitude
-					if dist <= 7 then
-						VFXModule.SpawnMeleeHitVFX(targetHrp.Position, STAN_COLOR)
-						StatsModule.ApplyDamage(target, 22)
-						if math.random() <= 0.3 then
-							applyStatusEffect(target, "Burn", 1)
+					local toTarget = targetHrp.Position - hrp.Position
+					local dist = toTarget.Magnitude
+					-- Solo hacia delante (antes golpeaba a todos los que estuvieran a 7 studs, incluso a la espalda)
+					if dist <= 7 and (dist < 0.01 or forward:Dot(toTarget.Unit) > 0) then
+						if StatsModule.ApplyDamage(target, 22) then
+							VFXModule.SpawnMeleeHitVFX(targetHrp.Position, STAN_COLOR)
+							if math.random() <= 0.3 then
+								applyStatusEffect(target, "Burn", 1)
+							end
 						end
 					end
 				end
@@ -230,45 +290,48 @@ AbilityFramework.Register({
 		local hrp = character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return false, "NoRootPart" end
 
-		task.wait(1)
+		-- La carga de 1 s va en otro hilo: antes Execute esperaba ese segundo y la respuesta al
+		-- cliente (y el cooldown en el HUD) llegaba con retraso.
+		task.spawn(function()
+			task.wait(1)
 
-		if not (character and character.Parent) then return end
+			-- Interrumpido (aturdido, derribado, muerto): el rayo no sale y la carga se consume
+			if not canStillAct(character) then return end
+			local currentHrp = character:FindFirstChild("HumanoidRootPart")
+			if not currentHrp then return end
 
-		local targetPosition
-		if typeof(targetData) == "Vector3" then
-			targetPosition = targetData
-		else
-			targetPosition = hrp.Position + hrp.CFrame.LookVector * 80
-		end
+			local targetPosition
+			if typeof(targetData) == "Vector3" then
+				targetPosition = targetData
+			else
+				targetPosition = currentHrp.Position + currentHrp.CFrame.LookVector * 80
+			end
 
-		local direction = (targetPosition - hrp.Position).Unit
-		local raycastParams = RaycastParams.new()
-		raycastParams.FilterDescendantsInstances = {character}
-		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+			local offset = targetPosition - currentHrp.Position
+			local direction = offset.Magnitude > 0.1 and offset.Unit or currentHrp.CFrame.LookVector
 
-		local result = workspace:Raycast(hrp.Position, direction * 80, raycastParams)
+			local raycastParams = RaycastParams.new()
+			raycastParams.FilterDescendantsInstances = { character }
+			raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
-		local endPoint = result and result.Position or (hrp.Position + direction * 80)
-		local origin = hrp.Position + Vector3.new(0, 1, 0)
-		VFXModule.SpawnProjectileVFX(origin, endPoint, STAN_COLOR)
-		VFXModule.PlaySound3D(hrp, VFXModule.Sounds.Plasma, 0.6)
+			local result = workspace:Raycast(currentHrp.Position, direction * 80, raycastParams)
 
-		if result and result.Instance then
-			local toonChar = result.Instance.Parent
-			local hum = toonChar and toonChar:FindFirstChildOfClass("Humanoid")
-			local targetPlayer = Players:GetPlayerFromCharacter(toonChar)
+			local endPoint = result and result.Position or (currentHrp.Position + direction * 80)
+			local origin = currentHrp.Position + Vector3.new(0, 1, 0)
+			VFXModule.SpawnProjectileVFX(origin, endPoint, STAN_COLOR)
+			VFXModule.PlaySound3D(currentHrp, VFXModule.Sounds.Plasma, 0.6)
 
-			if hum and targetPlayer then
-				StatsModule.ApplyDamage(toonChar, 30)
+			local toonChar = result and result.Instance:FindFirstAncestorOfClass("Model")
+			local targetPlayer = toonChar and Players:GetPlayerFromCharacter(toonChar)
+
+			-- Solo si el daño se aplicó (un Toonflow que ya escapó no recibe ni el impacto ni los pop-ups)
+			if toonChar and targetPlayer and isValidToonflow(toonChar) and StatsModule.ApplyDamage(toonChar, 30) then
 				VFXModule.SpawnMeleeHitVFX(result.Position, STAN_COLOR)
-
 				if PopupRemote then
 					PopupRemote:FireClient(targetPlayer, 5)
 				end
-
-				print("[Stan] RayoCorrupto impacto a " .. toonChar.Name .. " (30 dmg + Pop-ups 5s)")
 			end
-		end
+		end)
 	end,
 })
 
@@ -296,17 +359,17 @@ AbilityFramework.Register({
 		local bc = getBotController()
 		if not bc then
 			warn("[Stan] BotController no encontrado, no se pueden invocar clones.")
-			return
+			return false, "NoBotController" -- antes devolvía nil: se consumía el cooldown sin invocar nada
 		end
 
-		VFXModule.PlaySound3D(hrp, VFXModule.Sounds.Buff, 0.7)
-
+		local spawned = 0
 		for i = 1, 2 do
 			local offset = Vector3.new((i == 1 and 4 or -4), 0, 2)
 			local cloneCFrame = hrp.CFrame * CFrame.new(offset)
 
 			local cloneBot = bc.SpawnBot(StatsModule.Role.Devilish, cloneCFrame, "StanClone_" .. i)
 			if cloneBot then
+				spawned += 1
 				cloneBot:SetAttribute("IsClone", true)
 
 				local hl = Instance.new("Highlight")
@@ -323,26 +386,24 @@ AbilityFramework.Register({
 					local hitDebounce = false
 					cloneHrp.Touched:Connect(function(hit)
 						if hitDebounce then return end
-						local toonChar = hit.Parent
-						if not toonChar then return end
-						local stats = StatsModule.GetStats(toonChar)
-						if stats then
-							local role = stats:FindFirstChild("Role")
-							if role and role.Value == StatsModule.Role.Toonflow then
-								hitDebounce = true
-								StatsModule.ApplyDamage(toonChar, 17)
-								applyStatusEffect(toonChar, "Poison", 5)
-								revealAura(toonChar, character, 4)
+						local toonChar = hit:FindFirstAncestorOfClass("Model")
+						if not (toonChar and isValidToonflow(toonChar)) then return end
 
-								local hitHrp = toonChar:FindFirstChild("HumanoidRootPart")
-								if hitHrp then
-									VFXModule.SpawnMeleeHitVFX(hitHrp.Position, STAN_COLOR)
-								end
+						hitDebounce = true
+						if StatsModule.ApplyDamage(toonChar, 17) then
+							applyStatusEffect(toonChar, "Poison", 5)
+							revealAura(toonChar, character, 4)
 
-								task.wait(0.1)
-								cloneBot.Parent = nil
+							local hitHrp = toonChar:FindFirstChild("HumanoidRootPart")
+							if hitHrp then
+								VFXModule.SpawnMeleeHitVFX(hitHrp.Position, STAN_COLOR)
 							end
 						end
+
+						-- Destroy (no Parent = nil): el clon se elimina de verdad tras el golpe
+						task.delay(0.1, function()
+							if cloneBot.Parent then cloneBot:Destroy() end
+						end)
 					end)
 				end
 
@@ -350,7 +411,7 @@ AbilityFramework.Register({
 			end
 		end
 
-		print("[Stan] BetterCallStan: 2 clones invocados por " .. player.Name)
+		if spawned == 0 then return false, "SpawnFailed" end
 	end,
 })
 
@@ -401,17 +462,17 @@ AbilityFramework.Register({
 				elapsed = elapsed + 0.3
 			end
 
+			-- ResetSpeedMultiplier respeta un aturdimiento activo (no lo anula)
 			if character and character.Parent then
 				StatsModule.ResetSpeedMultiplier(character)
 			end
 		end)
-
-		print("[Stan] CorrupcionGrave activada por " .. player.Name .. " (8s de rastro de veneno)")
 	end,
 })
 
 ---------------------------------------------------------
 -- HABILIDAD 4: CAMBIO (MODO ARMA LASER)
+-- LaserModeActive lo lee CombatServer: en modo láser el M1 es StanAbilities.ExecuteM1.
 ---------------------------------------------------------
 AbilityFramework.Register({
 	Name = "CambioArma",
@@ -436,6 +497,9 @@ AbilityFramework.Register({
 		character:SetAttribute("LaserModeActive", newMode)
 
 		VFXModule.PlaySound3D(hrp, VFXModule.Sounds.Buff, 0.5)
+		local previous = character:FindFirstChild("CambioArmaVFX")
+		if previous then previous:Destroy() end
+
 		local hl = Instance.new("Highlight")
 		hl.Name = "CambioArmaVFX"
 		hl.FillColor = newMode and Color3.fromRGB(255, 0, 0) or STAN_COLOR
@@ -445,8 +509,6 @@ AbilityFramework.Register({
 		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		hl.Parent = character
 		Debris:AddItem(hl, 1.5)
-
-		print("[Stan] CambioArma: modo " .. (newMode and "LASER" or "MELEE") .. " activado por " .. player.Name)
 	end,
 })
 

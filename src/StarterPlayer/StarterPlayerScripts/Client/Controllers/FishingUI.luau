@@ -46,6 +46,13 @@ local PAPER = Color3.new(1, 1, 1)
 local WATER = Color3.fromRGB(205, 236, 250)
 local GOOD = Color3.fromRGB(46, 160, 67)
 local BAD = Color3.fromRGB(214, 48, 49)
+local TRASH = Color3.fromRGB(201, 152, 76)
+-- Color del círculo de cada criatura según su categoría: verde = pez, marrón = basura, rojo = peligro
+local CATEGORY_COLORS: { [string]: Color3 } = {
+	Fish = GOOD,
+	Trash = TRASH,
+	Danger = BAD,
+}
 local FONT = Enum.Font.Bangers
 
 -- Vocabulario de animación
@@ -435,7 +442,10 @@ local function addEntity(entity: Types.Entity)
 	else
 		-- Bug 6: Fallback visual when no sprite is set
 		-- Use a colored circle with the entity kind id as text
-		label.BackgroundColor3 = if kind.cartonsitos > 0 then GOOD elseif kind.damage > 0 then BAD else WATER
+		-- Antes: `if kind.cartonsitos > 0 then GOOD elseif kind.damage > 0 ...`. `damage` no existe en KindDef:
+		-- con los peces la condición se cortaba en cartonsitos > 0, pero basura y peligros (cartonsitos = 0)
+		-- evaluaban `nil > 0`, lanzaban un error y NUNCA se dibujaban (aunque el servidor sí los contaba).
+		label.BackgroundColor3 = CATEGORY_COLORS[kind.category] or WATER
 		label.BackgroundTransparency = 0.1
 		label.Image = ""
 		corner(label, 0.5)
@@ -447,7 +457,7 @@ local function addEntity(entity: Types.Entity)
 		glyph.Size = UDim2.fromScale(0.8, 0.8)
 		glyph.BackgroundTransparency = 1
 		glyph.Font = FONT
-		glyph.Text = kind.label or kind.id
+		glyph.Text = if kind.icon ~= "" then kind.icon else kind.name
 		glyph.TextColor3 = INK
 		glyph.TextScaled = true
 		glyph.ZIndex = 4
@@ -678,7 +688,12 @@ local function beginRound(s: Types.RoundSnapshot)
 	setCartonsitos(s.balance + s.cartonsitos, true)
 	setLives(s.lives)
 	for _, entity in s.entities do
-		addEntity(entity)
+		-- pcall: antes un error en addEntity cortaba beginRound a medias (paneles sin ocultar, resto de
+		-- entidades sin dibujar)
+		local ok, err = pcall(addEntity, entity)
+		if not ok then
+			warn("[FishingUI] No se pudo dibujar la entidad " .. tostring(entity.kind) .. ": " .. tostring(err))
+		end
 	end
 	hidePanel(startPanel)
 	hidePanel(endPanel)
@@ -818,7 +833,10 @@ function FishingUI.init()
 	Net.on("Fishing_State", beginRound)
 	Net.on("Fishing_Spawn", function(entity: Types.Entity)
 		if running then
-			addEntity(entity)
+			local ok, err = pcall(addEntity, entity)
+			if not ok then
+				warn("[FishingUI] No se pudo dibujar la entidad " .. tostring(entity.kind) .. ": " .. tostring(err))
+			end
 		end
 	end)
 	Net.on("Fishing_HookState", onHookState)

@@ -260,9 +260,13 @@ MatchStateRemote.OnClientEvent:Connect(function(state, data)
 		end
 
 	elseif state == "InProgress" then
-		inMatch = true
-		local mapId = MusicData.Maps[currentMapName] or MusicData.Maps["Default"]
-		switchPhase("Ambient", mapId)
+		-- El servidor repite InProgress cada 5 s para sincronizar el reloj: solo la primera vez
+		-- se pasa a Ambient. Antes cada repetición cortaba la música de persecución cada 5 s.
+		if not inMatch then
+			inMatch = true
+			local mapId = MusicData.Maps[currentMapName] or MusicData.Maps["Default"]
+			switchPhase("Ambient", mapId)
+		end
 		startAudioLoop()
 
 	elseif state == "Ending" then

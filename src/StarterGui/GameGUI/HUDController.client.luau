@@ -18,6 +18,7 @@ local CharacterDatabase = require(ReplicatedStorage:WaitForChild("Framework"):Wa
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local gameGUI = script.Parent
+local AbilityLoadouts = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("AbilityLoadouts"))
 local globalGUI = playerGui:WaitForChild("GlobalGUI", 5) or playerGui:WaitForChild("GameGUI", 5)
 local lobbyGUI = playerGui:WaitForChild("LobbyGUI", 5)
 
@@ -116,6 +117,11 @@ local function formatTime(seconds)
 	local secs = seconds % 60
 	return string.format("%02d:%02d", mins, secs)
 end
+
+-- Estado de la partida en el cliente
+local currentRole = nil          -- "Toonflow" / "Devilish" (el atributo Role vive en el Character, no en el Player)
+local exitActive = false         -- true mientras la salida está abierta (el reloj lo manda ExitTimer)
+local progressInitialized = false -- el servidor reenvía InProgress cada 5 s: preparar la UI solo una vez
 
 local function stopTimer()
 	if matchTimerThread then
@@ -271,9 +277,17 @@ local function updateAllyList()
 		end
 	end
 
+	-- Un Toonflow solo ve como aliados a otros Toonflows en partida (antes aparecía
+	-- también el Devilish, con su retrato y su porcentaje de vida).
+	local function isAlly(otherPlayer)
+		if currentRole ~= "Toonflow" then return true end
+		local otherChar = otherPlayer.Character
+		return otherChar ~= nil and otherChar:GetAttribute("Role") == "Toonflow"
+	end
+
 	local index = 1
 	for _, otherPlayer in ipairs(Players:GetPlayers()) do
-		if otherPlayer ~= player then
+		if otherPlayer ~= player and isAlly(otherPlayer) then
 			local slotFrame = getAllySlot(index)
 			if slotFrame then
 				if otherPlayer.Character then
@@ -302,6 +316,7 @@ local function updateRoleMapping(data)
 	abilityToSlot = {}
 	for i = 1, 5 do stopCooldown(i) end
 
+	currentRole = data and data.role or nil
 	if not data then return end
 
 	-- Control de visibilidad del contador de tareas según el Rol
@@ -309,52 +324,10 @@ local function updateRoleMapping(data)
 		taskFrame.Visible = (data.role == "Toonflow")
 	end
 
-	if data.role == "Devilish" then
-		if data.characterName == "Neuro" then
-			abilityToSlot["CallOfStardoom"] = 1
-			abilityToSlot["LightsAndAction"] = 2
-			abilityToSlot["LastShow"] = 3
-		elseif data.characterName == "MissCircle" then
-			abilityToSlot["LinearThrust"] = 1
-			abilityToSlot["PunishmentRadius"] = 2
-			abilityToSlot["FailingGrade"] = 3
-			abilityToSlot["DetentionTime"] = 4
-		elseif data.characterName == "Stan.oma.png" then
-			abilityToSlot["RayoCorrupto"] = 1
-			abilityToSlot["BetterCallStan"] = 2
-			abilityToSlot["CorrupcionGrave"] = 3
-			abilityToSlot["CambioArma"] = 4
-		elseif data.characterName == "Mariposaurio" then
-			abilityToSlot["HereComes"] = 1
-			abilityToSlot["AThought"] = 2
-			abilityToSlot["Boo"] = 3
-			abilityToSlot["DeadHope"] = 4
-		else
-			abilityToSlot["RayosLaser"] = 3
-		end
-	elseif data.role == "Toonflow" then
-		if data.characterName == "Trunks" then
-			abilityToSlot["ZSword"] = 1
-			abilityToSlot["KiBlasts"] = 2
-			abilityToSlot["SuperSaiyan"] = 3
-		elseif data.characterName == "TobyWilliams" then
-			abilityToSlot["YaLevantate"] = 1
-			abilityToSlot["BaraNormal"] = 2
-			abilityToSlot["BaraFantasma"] = 3
-			abilityToSlot["RayosLaserToby"] = 4
-		elseif data.characterName == "Takorita" then
-			abilityToSlot["EmergenciaSevera"] = 1
-			abilityToSlot["AnnouncerAttack"] = 2
-			abilityToSlot["CuracionAumentante"] = 3
-		elseif data.characterName == "Deerphina" then
-			abilityToSlot["Koshintantan"] = 1
-			abilityToSlot["ChistesDeCiervos"] = 2
-			abilityToSlot["GalletasParaCiervos"] = 3
-			abilityToSlot["RegaloDeAmigos"] = 4
-		else
-			abilityToSlot["HeredadoDeMama"] = 1
-			abilityToSlot["Gamechild"] = 2
-			abilityToSlot["UltimaOpcion"] = 3
+	-- Fuente única de slots (la misma que usa AbilityClient para las teclas).
+	for slotIndex, abilityName in ipairs(AbilityLoadouts.get(data.characterName, data.role)) do
+		if abilityName ~= "" then
+			abilityToSlot[abilityName] = slotIndex
 		end
 	end
 
@@ -500,6 +473,10 @@ MatchStateRemote.OnClientEvent:Connect(function(state, data)
 		stopTimer()
 		for i = 1, 5 do stopCooldown(i) end
 		if exitTimerLabel then exitTimerLabel.Visible = false end
+		exitActive = false
+		progressInitialized = false
+		if timerLabel then timerLabel.TextColor3 = Color3.fromRGB(255, 255, 255) end
+		if taskProgressLabel then taskProgressLabel.Text = "TAREAS: --" end
 
 		if data and data.message then
 			showStatusMessage(data.message, 4)
@@ -514,6 +491,9 @@ MatchStateRemote.OnClientEvent:Connect(function(state, data)
 		if lobbyGUI then lobbyGUI.Enabled = false end
 		gameGUI.Enabled = true
 		if exitTimerLabel then exitTimerLabel.Visible = false end
+		exitActive = false
+		progressInitialized = false
+		if taskProgressLabel then taskProgressLabel.Text = "TAREAS: --" end
 		updateRoleMapping(data)
 		if data and data.characterName then
 			setupCharacterIcon(data.characterName)
@@ -528,16 +508,31 @@ MatchStateRemote.OnClientEvent:Connect(function(state, data)
 		if timerLabel then timerLabel.TextColor3 = Color3.fromRGB(255, 255, 255) end
 
 		if data and data.message then showStatusMessage(data.message, 4) end
-		if data and (data.timer or data.duration) then startTimer(data.timer or data.duration) end
-
-		updateAllyList()
-
-		local char = player.Character
-		if char then
-			setupResourceBar(char)
-			local charName = char:GetAttribute("CharacterName")
-			if charName then setupCharacterIcon(charName) end
+		-- Con la salida abierta el reloj lo gobierna ExitTimer; antes el InProgress que llega
+		-- cada 5 s pisaba la cuenta atrás de la salida con el tiempo total de la partida.
+		if not exitActive and data and (data.timer or data.duration) then
+			startTimer(data.timer or data.duration)
 		end
+
+		-- El servidor repite InProgress cada 5 s solo para sincronizar el reloj: la lista de
+		-- aliados, la barra de recursos y el icono se preparan una vez por partida.
+		if not progressInitialized then
+			progressInitialized = true
+			updateAllyList()
+
+			local char = player.Character
+			if char then
+				setupResourceBar(char)
+				local charName = char:GetAttribute("CharacterName")
+				if charName then setupCharacterIcon(charName) end
+			end
+		end
+	end
+end)
+
+Players.PlayerRemoving:Connect(function()
+	if progressInitialized then
+		task.delay(0.5, updateAllyList)
 	end
 end)
 
@@ -563,7 +558,9 @@ end)
 if TaskProgressRemote then
 	TaskProgressRemote.OnClientEvent:Connect(function(data)
 		if data and data.completed and data.total then
-			if taskFrame and player:GetAttribute("Role") ~= "Devilish" then
+			-- (antes: player:GetAttribute("Role"), que siempre es nil porque el rol vive en el
+			-- Character: el Devilish veía el contador de tareas tras la primera tarea)
+			if taskFrame and currentRole == "Toonflow" then
 				taskFrame.Visible = true
 			end
 			if taskProgressLabel then
@@ -574,15 +571,41 @@ if TaskProgressRemote then
 end
 
 -- Listener para Apertura de Salida
+-- El servidor envía { remaining = segundos, open = bool } al abrir, cada 5 s y al cerrar.
+-- Antes se leía como número: "remaining" no se reconocía, el reloj se reiniciaba a 01:00
+-- cada 5 s, y al cerrar la salida el HUD seguía mostrando "¡SALIDA ABIERTA!".
 if ExitTimerRemote then
-	ExitTimerRemote.OnClientEvent:Connect(function(dur)
+	ExitTimerRemote.OnClientEvent:Connect(function(data)
+		local remaining, isOpen = nil, true
+		if typeof(data) == "table" then
+			remaining = tonumber(data.remaining)
+			isOpen = data.open ~= false
+		else
+			remaining = tonumber(data)
+		end
+
+		if not isOpen then
+			exitActive = false
+			stopTimer()
+			if exitTimerLabel then exitTimerLabel.Visible = false end
+			if timerLabel then
+				timerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				timerLabel.Text = "00:00"
+			end
+			return
+		end
+
+		local firstOpen = not exitActive
+		exitActive = true
 		if timerLabel then timerLabel.TextColor3 = Color3.fromRGB(255, 50, 50) end
 		if exitTimerLabel then
 			exitTimerLabel.Visible = true
 			exitTimerLabel.Text = "¡SALIDA ABIERTA!"
 		end
-		startTimer(dur or 60)
-		showStatusMessage("¡Salida abierta! Escapa ahora.", 5)
+		startTimer(remaining or 60) -- resincroniza con el servidor
+		if firstOpen then
+			showStatusMessage("¡Salida abierta! Escapa ahora.", 5)
+		end
 	end)
 end
 

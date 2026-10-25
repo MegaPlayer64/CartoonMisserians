@@ -103,6 +103,21 @@ MeleeAttackRemote.OnServerEvent:Connect(function(player)
 	-- Actualizar tiempo del ultimo ataque inmediatamente
 	lastAttackTime.Value = currentTime
 
+	-- Stan en modo láser (CambioArma): el M1 es el láser de StanAbilities, no el golpe cuerpo a cuerpo.
+	-- Antes CambioArma solo cambiaba un atributo que nadie leía.
+	if character:GetAttribute("CharacterName") == "Stan.oma.png" and character:GetAttribute("LaserModeActive") then
+		task.spawn(function()
+			local ok, err = pcall(function()
+				require(game:GetService("ServerScriptService").ServerModules.StanAbilities).ExecuteM1(character)
+			end)
+			if not ok then
+				warn("[CombatServer] Error en el láser de Stan: " .. tostring(err))
+			end
+			attackState.isAttacking = false -- liberar el debounce aunque falle
+		end)
+		return
+	end
+
 	-- Obtener parametros del ataque desde los stats
 	local attackRange = stats:FindFirstChild("AttackRange")
 	local attackDamage = stats:FindFirstChild("AttackDamage")
@@ -118,9 +133,9 @@ MeleeAttackRemote.OnServerEvent:Connect(function(player)
 		return
 	end
 
-	-- Enviar datos de depuracion de hitbox a todos los clientes
+	-- Datos de depuracion de hitbox: solo para desarrolladores (Studio / DevAuth)
 	if DebugHitboxRemote then
-		DebugHitboxRemote:FireAllClients({
+		require(game:GetService("ServerScriptService").ServerModules.DevAuth).fireAuthorized(DebugHitboxRemote, {
 			type = "Box",
 			cframe = hrp.CFrame * CFrame.new(0, 0, -attackRange.Value / 2),
 			size = Vector3.new(attackRange.Value * 2, attackRange.Value * 2, attackRange.Value * 2),

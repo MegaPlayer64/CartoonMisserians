@@ -235,8 +235,20 @@ local function setupPlayerRole(player, role)
 
 	character:SetAttribute("CharacterName", characterName)
 	character:SetAttribute("Role", role)
+	character:SetAttribute("Escaped", nil) -- por si el personaje se reutiliza entre partidas
 	StatsModule.InitializeStats(character, role, config)
 	AbilityFramework.InitPlayer(player)
+
+	-- Estado propio de cada personaje: el Character puede reutilizarse entre partidas, y las cargas de
+	-- galletas de Deerphina, el modo láser de Stan o las marionetas de Mariposaurio no deben heredarse.
+	character:SetAttribute("CookieCharges", nil)
+	character:SetAttribute("LaserModeActive", nil)
+	character:SetAttribute("ActivePuppets", nil)
+
+	-- Pasiva de Stan ("Corrupción Inminente"): antes StartPassiveTrail no se llamaba desde ningún sitio
+	if characterName == "Stan.oma.png" and role == StatsModule.Role.Devilish then
+		require(game:GetService("ServerScriptService").ServerModules.StanAbilities).StartPassiveTrail(character)
+	end
 end
 
 local function teleportToGameMap()
@@ -381,6 +393,7 @@ local function cleanupMatch()
 			if player.Character then
 				local stats = player.Character:FindFirstChild("Stats")
 				if stats then stats:Destroy() end
+				player.Character:SetAttribute("Escaped", nil)
 			end
 		end
 	end
@@ -455,6 +468,18 @@ local function openExit(duration)
 	end)
 end
 
+-- Zona segura de quienes escapan: "EscapeSpawn" (BasePart) dentro del mapa si existe;
+-- si no, el spawn del lobby.
+local function getSafeZoneSpawn()
+	local mapSpawn = currentMap and currentMap:FindFirstChild("EscapeSpawn")
+	if mapSpawn and mapSpawn:IsA("BasePart") then
+		return mapSpawn
+	end
+	local maps = workspace:FindFirstChild("Maps")
+	local lobby = maps and maps:FindFirstChild("Lobby")
+	return lobby and lobby:FindFirstChild("LobbySpawn")
+end
+
 local function setupExitTrigger()
 	local exitModel = currentMap and (currentMap:FindFirstChild("Exit") or currentMap:FindFirstChild("ExitDoor"))
 	if not exitModel then return end
@@ -483,6 +508,13 @@ local function setupExitTrigger()
 
 		if isAlive and not isDowned then
 			escapedToonflows[player] = true
+			-- Invulnerable (StatsModule.ApplyDamage lo respeta) y fuera del alcance del
+			-- Devilish: antes seguía en el mapa y podía ser golpeado después de escapar.
+			character:SetAttribute("Escaped", true)
+			local safeSpawn = getSafeZoneSpawn()
+			if safeSpawn then
+				teleportPlayer(player, safeSpawn)
+			end
 			print("[MatchManager] " .. player.Name .. " escapó exitosamente por la salida!")
 		end
 	end)
@@ -673,6 +705,14 @@ local function runInProgress()
 					end
 				end
 			end
+		end
+
+		-- Contar los escapados desde escapedToonflows, no desde assignedRoles: un Toonflow que escapa y
+		-- luego se desconecta salía de assignedRoles y la partida pasaba de victoria de Toonflows a
+		-- "el Devilish eliminó a todos".
+		escapedCount = 0
+		for _ in pairs(escapedToonflows) do
+			escapedCount += 1
 		end
 
 		aliveToons = aliveInMapCount

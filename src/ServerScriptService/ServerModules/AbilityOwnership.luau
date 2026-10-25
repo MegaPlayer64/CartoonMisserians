@@ -15,21 +15,10 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local CharacterDatabase = require(ReplicatedStorage.Framework.CharacterDatabase)
+local AbilityLoadouts = require(ReplicatedStorage.Shared.AbilityLoadouts)
 
--- Clave = CharacterDatabase.Name (nombre canónico).
-local ABILITIES_BY_CHARACTER: { [string]: { string } } = {
-	-- Toonflows
-	Brothercat = { "HeredadoDeMama", "Gamechild", "UltimaOpcion" },
-	TobyWilliams = { "YaLevantate", "BaraNormal", "BaraFantasma", "RayosLaserToby" },
-	Takorita = { "EmergenciaSevera", "AnnouncerAttack", "CuracionAumentante" },
-	Deerphina = { "Koshintantan", "ChistesDeCiervos", "GalletasParaCiervos", "RegaloDeAmigos" },
-	Trunks = { "ZSword", "KiBlasts", "SuperSaiyan" },
-	-- Devilishes
-	MissCircle = { "LinearThrust", "PunishmentRadius", "FailingGrade", "DetentionTime" },
-	["Stan.oma.png"] = { "RayoCorrupto", "BetterCallStan", "CorrupcionGrave", "CambioArma" },
-	Mariposaurio = { "HereComes", "AThought", "Boo", "DeadHope" },
-	Neuro = { "CallOfStardoom", "LightsAndAction", "LastShow" },
-}
+-- Fuente única compartida con el cliente (HUD y teclas).
+local ABILITIES_BY_CHARACTER = AbilityLoadouts.ByCharacter
 
 -- Plantillas de AbilityTemplates sin dueño concreto: cualquier Devilish.
 local GENERIC_DEVILISH_ABILITIES: { [string]: boolean } = {

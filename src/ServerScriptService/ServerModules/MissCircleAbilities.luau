@@ -57,10 +57,10 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local dashDirection = (typeof(targetData) == "Vector3") and (targetData - hrp.Position).Unit or hrp.CFrame.LookVector
 		dashDirection = Vector3.new(dashDirection.X, 0, dashDirection.Z).Unit
@@ -139,10 +139,10 @@ AbilityFramework.Register({
 
 	Execute = function(params)
 		local character = params.Character
-		if not character then return end
+		if not character then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		-- Crear el área circular visual en el suelo
 		local circleRadius = 14
@@ -209,10 +209,10 @@ AbilityFramework.Register({
 
 	Execute = function(params)
 		local character = params.Character
-		if not character then return end
+		if not character then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		local closestToon = nil
 		local minDistance = math.huge
@@ -250,7 +250,7 @@ AbilityFramework.Register({
 
 	Execute = function(params)
 		local character = params.Character
-		if not character then return end
+		if not character then return false, "NoCharacter" end
 
 		local hum = character:FindFirstChildOfClass("Humanoid")
 		local hrp = character:FindFirstChild("HumanoidRootPart")

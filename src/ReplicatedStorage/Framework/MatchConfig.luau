@@ -45,7 +45,8 @@ MatchConfig.Devilish = {
 MatchConfig.TaskCount = 6                       -- Tareas interactivas en el mapa
 MatchConfig.TaskHoldDuration = 3               -- Segundos manteniendo E para completar
 MatchConfig.ExitOpenDuration = 70              -- 1m 10s de salida al completar las 6 tareas
-MatchConfig.ExitOpenDurationPenalty = 50       -- 50s si se agota el tiempo sin completar tareas
+-- (Se eliminó ExitOpenDurationPenalty: nunca se usó. Decisión de diseño: si se agota el tiempo sin
+--  reparar las tareas, el Devilish gana al instante; no hay salida de penalización.)
 
 -- == LAST MAN STANDING ==
 MatchConfig.LMSHealthBonusPercent = 0.2        -- +20% de MaxHealth permanente

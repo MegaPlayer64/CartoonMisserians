@@ -12,7 +12,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
-local CharacterDatabase = require(ReplicatedStorage.Framework.CharacterDatabase)
+local CharacterDatabase = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("CharacterDatabase"))
 
 -- CONFIGURACIÓN DE MOVIMIENTO Y VELOCIDADES
 local NORMAL_SPEED = 16
@@ -61,15 +61,18 @@ local function updateBarGradient(gradient, percentage)
 	})
 end
 
+-- Conexiones a servicios globales (no mueren con el personaje): se sueltan al destruirse el script
+local connections = {}
+
 -- CONTROLES DE ENTRADA (SHIFT / GAMEPAD)
-UIS.InputBegan:Connect(function(input, gameProcessed)
+connections[#connections + 1] = UIS.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonL2 then
 		isSprintKeyPressed = true
 	end
 end)
 
-UIS.InputEnded:Connect(function(input)
+connections[#connections + 1] = UIS.InputEnded:Connect(function(input)
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonL2 then
 		isSprintKeyPressed = false
 	end
@@ -105,10 +108,10 @@ local function setupCharacter(newCharacter)
 end
 
 if player.Character then setupCharacter(player.Character) end
-player.CharacterAdded:Connect(setupCharacter)
+connections[#connections + 1] = player.CharacterAdded:Connect(setupCharacter)
 
 -- BUCLE ÚNICO DE RENDERIZADO
-RunService.RenderStepped:Connect(function(dt)
+connections[#connections + 1] = RunService.RenderStepped:Connect(function(dt)
 	if not (character and humanoid and humanoid.Parent) then return end
 
 	local camera = Workspace.CurrentCamera
@@ -123,20 +126,29 @@ RunService.RenderStepped:Connect(function(dt)
 		isExhausted = false 
 	end
 
-	local wantsToSprint = isSprintKeyPressed and isMoving and not isExhausted and stamina > 0
+	-- La velocidad base y los efectos (aturdimiento, ralentización, Super Saiyan, Fame...) los
+	-- decide el SERVIDOR en Stats. Antes este bucle escribía 16/22 en cada frame y los pisaba:
+	-- los stuns, slows y buffs no afectaban a jugadores humanos.
+	local stats = character:FindFirstChild("Stats")
+	local statSpeedMult = stats and stats:FindFirstChild("SpeedMultiplier")
+	local statWalkSpeed = stats and stats:FindFirstChild("WalkSpeed")
+	local serverMult = statSpeedMult and statSpeedMult.Value or 1
+	local baseSpeed = statWalkSpeed and statWalkSpeed.Value or NORMAL_SPEED
+
+	local wantsToSprint = (isSprintKeyPressed or player:GetAttribute("MobileSprint") == true) and isMoving and not isExhausted and stamina > 0 and serverMult > 0
 
 	if wantsToSprint then
-		humanoid.WalkSpeed = SPRINT_SPEED
+		humanoid.WalkSpeed = baseSpeed * serverMult * (SPRINT_SPEED / NORMAL_SPEED)
 		stamina = math.max(0, stamina - (runCost * dt))
 	else
-		humanoid.WalkSpeed = NORMAL_SPEED
+		humanoid.WalkSpeed = baseSpeed * serverMult
 		stamina = math.min(MAX_STAMINA, stamina + (regenRate * dt))
 	end
 
 	---------------------------------------------------------
 	-- 2. LÓGICA DE SALTO DINÁMICO
 	---------------------------------------------------------
-	if stamina < JUMP_MIN_STAMINA or isExhausted then
+	if stamina < JUMP_MIN_STAMINA or isExhausted or serverMult == 0 then
 		humanoid.JumpPower = 0
 	else
 		local staminaFactor = (stamina - JUMP_MIN_STAMINA) / (MAX_STAMINA - JUMP_MIN_STAMINA)
@@ -160,4 +172,11 @@ RunService.RenderStepped:Connect(function(dt)
 
 	staminFill.ImageColor3 = isExhausted and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(255, 255, 255)
 	healthFill.ImageColor3 = (healthPercent <= 0.25) and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(255, 255, 255)
+end)
+
+script.Destroying:Connect(function()
+	for _, connection in ipairs(connections) do
+		connection:Disconnect()
+	end
+	table.clear(connections)
 end)

@@ -114,6 +114,9 @@ function StatsModule.ApplyDamage(character, damage, ignoreDowned)
 	local stats = StatsModule.GetStats(character)
 	if not stats then return false end
 
+	-- Un Toonflow que ya escapó por la salida es invulnerable (ver MatchManager).
+	if character:GetAttribute("Escaped") then return false end
+
 	local state = stats:FindFirstChild("State")
 	local health = stats:FindFirstChild("Health")
 	local isAlive = stats:FindFirstChild("IsAlive")
@@ -325,6 +328,40 @@ function StatsModule.SetState(character, newState)
 		if isDowned then isDowned.Value = false end
 		character:SetAttribute("IsDowned", false)
 	end
+
+	return true
+end
+
+-- Aturde a un personaje durante `duration` segundos.
+-- Las habilidades aplicaban el aturdimiento escribiendo Humanoid.WalkSpeed = 0 y restaurando
+-- "la velocidad de antes". Si dos aturdimientos se solapaban, el segundo guardaba 0 como velocidad
+-- original y el personaje se quedaba INMÓVIL PARA SIEMPRE. Aquí el estado Stunned manda (el
+-- multiplicador base lo respeta) y solo el aturdimiento más reciente lo levanta (token StunId).
+-- No pisa Derribado/Muerto ni afecta a quien ya escapó. Devuelve true si aplicó el aturdimiento.
+function StatsModule.Stun(character, duration)
+	local stats = StatsModule.GetStats(character)
+	if not stats or character:GetAttribute("Escaped") then return false end
+	if typeof(duration) ~= "number" or duration ~= duration or duration <= 0 then return false end
+
+	local state = stats:FindFirstChild("State")
+	local isAlive = stats:FindFirstChild("IsAlive")
+	if not (state and isAlive) or not isAlive.Value then return false end
+	if state.Value == StatsModule.CharacterState.Downed or state.Value == StatsModule.CharacterState.Dead then
+		return false
+	end
+
+	local stunId = (character:GetAttribute("StunId") or 0) + 1
+	character:SetAttribute("StunId", stunId)
+	StatsModule.SetState(character, StatsModule.CharacterState.Stunned)
+
+	task.delay(duration, function()
+		if not character.Parent or character:GetAttribute("StunId") ~= stunId then return end
+		local currentStats = StatsModule.GetStats(character)
+		local currentState = currentStats and currentStats:FindFirstChild("State")
+		if currentState and currentState.Value == StatsModule.CharacterState.Stunned then
+			StatsModule.SetState(character, StatsModule.CharacterState.Normal)
+		end
+	end)
 
 	return true
 end

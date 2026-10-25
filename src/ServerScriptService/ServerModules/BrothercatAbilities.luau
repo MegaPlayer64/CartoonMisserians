@@ -42,10 +42,10 @@ AbilityFramework.Register({
 
 	Execute = function(params)
 		local character = params.Character
-		if not character then return end
+		if not character then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		-- == PLACEHOLDER VISUAL: Highlight amarillo/verde + rastro de particulas ==
 		VFXModule.SpawnSpeedBuffVFX(character, 3)
@@ -83,10 +83,10 @@ AbilityFramework.Register({
 
 	Execute = function(params)
 		local character = params.Character
-		if not character then return end
+		if not character then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		-- == PLACEHOLDER VISUAL: Cilindro/aura verde brillante por 1 segundo ==
 		VFXModule.SpawnHealAuraVFX(character, 1)
@@ -120,10 +120,10 @@ AbilityFramework.Register({
 		local character = params.Character
 		local player = params.Player
 		local targetData = params.TargetData
-		if not (character and player) then return end
+		if not (character and player) then return false, "NoCharacter" end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
 		-- Calcular direccion del disparo
 		local targetPosition

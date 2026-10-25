@@ -11,7 +11,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
-local Remotes = ReplicatedStorage.Framework.Remotes
+local Remotes = ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Remotes")
 local MatchStateRemote = Remotes:WaitForChild("MatchState")
 
 local gui = script.Parent

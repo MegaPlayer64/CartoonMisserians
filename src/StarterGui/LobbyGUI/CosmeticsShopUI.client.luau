@@ -14,8 +14,9 @@ local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 local lobbyGUI = script.Parent
 
-local CosmeticsDatabase = require(ReplicatedStorage.Framework.CosmeticsDatabase)
-local Remotes = ReplicatedStorage.Framework.Remotes
+local Framework = ReplicatedStorage:WaitForChild("Framework")
+local CosmeticsDatabase = require(Framework:WaitForChild("CosmeticsDatabase"))
+local Remotes = Framework:WaitForChild("Remotes")
 local BuyCosmeticRemote = Remotes:WaitForChild("BuyCosmetic")
 local EquipEmoteRemote = Remotes:WaitForChild("EquipEmote")
 
@@ -24,6 +25,7 @@ local equippedEmotes = { "", "", "", "", "", "" }
 local ownedEmotes = {}
 local currentSlotPicker = nil -- emoteId que se está asignando a un slot
 local isShopOpen = false
+local buyInFlight = false
 
 -- == HELPERS DE ATRIBUTOS ==
 
@@ -386,8 +388,13 @@ local function createEmoteCard(emoteData)
 		actionBtn.Text = "COMPRAR $" .. emoteData.Price
 		actionBtn.BackgroundColor3 = Color3.fromRGB(140, 100, 30)
 		actionBtn.MouseButton1Click:Connect(function()
-			local success, message = BuyCosmeticRemote:InvokeServer(emoteData.Id)
-			if success then
+			if buyInFlight then return end -- evita compras duplicadas por doble clic
+			buyInFlight = true
+			local ok, success = pcall(function()
+				return BuyCosmeticRemote:InvokeServer(emoteData.Id)
+			end)
+			buyInFlight = false
+			if ok and success then
 				refreshOwned()
 				refreshContent()
 			end
@@ -403,7 +410,9 @@ function refreshContent()
 	-- Limpiar contenido anterior (conservar el UIGridLayout)
 	for _, child in ipairs(contentArea:GetChildren()) do
 		if child ~= contentGrid then
-			child.Parent = nil
+			-- Destroy (no Parent = nil): desconecta los eventos y libera la tarjeta. Antes cada
+			-- refresco (equipar, comprar, cambiar de pestaña) dejaba un catálogo entero en memoria.
+			child:Destroy()
 		end
 	end
 
@@ -482,7 +491,9 @@ refreshOwned()
 refreshEquipped()
 
 -- == LISTENER PARA SHOP PADS DEL LOBBY ==
-local openShopTabRemote = ReplicatedStorage.Framework.Remotes:FindFirstChild("OpenShopTab")
+-- WaitForChild: antes era FindFirstChild y, si el servidor aún no había creado el remote, los
+-- pads de la tienda nunca abrían la UI.
+local openShopTabRemote = Remotes:WaitForChild("OpenShopTab", 10)
 if openShopTabRemote then
 	openShopTabRemote.OnClientEvent:Connect(function(tabName)
 		toggleShop(true, tabName)

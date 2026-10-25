@@ -1,11 +1,17 @@
 --[[
 	MariposaurioAbilities (ModuleScript)
+	Ubicación: ServerScriptService.ServerModules.MariposaurioAbilities
+
 	Registro oficial de habilidades para Mariposaurio en AbilityFramework.
+
+	CONTRATO con AbilityFramework.Execute: `return false, motivo` = la habilidad NO se ejecutó y se
+	reembolsan cooldown y recursos. Todas las de esta lista necesitan un objetivo válido, así que si
+	no lo hay (fuera de rango, muerto, ya escapó...) no se consume nada.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
+local Debris = game:GetService("Debris")
 
 local AbilityFramework = require(game:GetService("ServerScriptService").ServerModules.AbilityFramework)
 local StatsModule = require(game:GetService("ServerScriptService").ServerModules.StatsModule)
@@ -16,6 +22,57 @@ local Remotes = ReplicatedStorage.Framework.Remotes
 local BlindEffectRemote = Remotes:FindFirstChild("BlindEffect")
 local PopUpRemote = Remotes:FindFirstChild("TriggerPopups") -- Para los mensajes crueles en pantalla
 local MariposaurioAbilities = {}
+
+local TRACK_RANGE = 60
+local TRACK_SECONDS = 5
+local GRAB_RANGE = 8
+local GRAB_DAMAGE = 20
+local GRAB_HOLD_SECONDS = 2.5
+local BOO_BEHIND_DISTANCE = 4
+
+-- DeadHope: la descripción habla de "revivir a un Toonflow eliminado", pero la implementación
+-- original invocaba una marioneta en cualquier momento. Se conserva ese comportamiento; ponlo en true
+-- para exigir un Toonflow muerto (su personaje solo existe unos segundos tras morir, hasta el respawn).
+local REQUIRE_DEAD_TOONFLOW = false
+local PUPPET_LIFETIME = 30
+local MAX_PUPPETS = 2
+
+-- Último Toonflow rastreado por cada Devilish (se usa en Boo!!). Claves débiles: no retiene personajes.
+local lastTracked = setmetatable({}, { __mode = "k" })
+
+-- Toonflow vivo, con Stats de partida y que no haya escapado (los escapados son invulnerables).
+-- Antes no se comprobaba el rol ni el escape: Boo!! podía teletransportar al Devilish a la zona segura.
+local function isValidToonflow(character)
+	if not character or not character.Parent or character:GetAttribute("Escaped") then return false end
+	local stats = StatsModule.GetStats(character)
+	if not stats then return false end
+	local role = stats:FindFirstChild("Role")
+	local isAlive = stats:FindFirstChild("IsAlive")
+	return role ~= nil and role.Value == StatsModule.Role.Toonflow and isAlive ~= nil and isAlive.Value
+end
+
+-- Toonflow válido más cercano; maxDistance/minDot opcionales (cono frontal).
+local function findClosestToonflow(character, hrp, maxDistance, minDot)
+	local best, bestDistance = nil, maxDistance or math.huge
+	local forward = hrp.CFrame.LookVector
+
+	for _, model in ipairs(workspace:GetChildren()) do
+		if model:IsA("Model") and model ~= character and isValidToonflow(model) then
+			local targetHrp = model:FindFirstChild("HumanoidRootPart")
+			if targetHrp then
+				local toTarget = targetHrp.Position - hrp.Position
+				local distance = toTarget.Magnitude
+				if distance < bestDistance or (distance == bestDistance and best == nil) then
+					if not minDot or distance < 0.01 or forward:Dot(toTarget.Unit) > minDot then
+						best, bestDistance = model, distance
+					end
+				end
+			end
+		end
+	end
+
+	return best
+end
 
 -- == HABILIDAD 1: HERE COMES (Rastreo + Alucinaciones) ==
 AbilityFramework.Register({
@@ -28,53 +85,30 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
-		-- Buscar al Toonflow más cercano
-		local targetToon = nil
-		local shortestDist = 60
+		local targetToon = findClosestToonflow(character, hrp, TRACK_RANGE, nil)
+		if not targetToon then return false, "NoTarget" end -- nada en rango: no se consume
 
-		for _, p in ipairs(Players:GetPlayers()) do
-			local c = p.Character
-			if c and c ~= character then
-				local targetHrp = c:FindFirstChild("HumanoidRootPart")
-				local stats = StatsModule.GetStats(c)
-				local isAlive = stats and stats:FindFirstChild("IsAlive") and stats.IsAlive.Value
+		-- Efecto visual: Highlight de rastreo (uno por objetivo; antes se apilaban)
+		local previous = targetToon:FindFirstChild("MariposaurioTracking")
+		if previous then previous:Destroy() end
 
-				if isAlive and targetHrp then
-					local dist = (targetHrp.Position - hrp.Position).Magnitude
-					if dist < shortestDist then
-						shortestDist = dist
-						targetToon = c
-					end
-				end
-			end
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "MariposaurioTracking"
+		highlight.FillColor = Color3.fromRGB(255, 100, 200)
+		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+		highlight.Parent = targetToon
+		Debris:AddItem(highlight, TRACK_SECONDS)
+
+		-- Alucinaciones en pantalla del Toonflow
+		local targetPlayer = Players:GetPlayerFromCharacter(targetToon)
+		if targetPlayer and BlindEffectRemote then
+			BlindEffectRemote:FireClient(targetPlayer, TRACK_SECONDS)
 		end
 
-		if targetToon then
-			local targetHrp = targetToon:FindFirstChild("HumanoidRootPart")
-
-			-- Efecto visual: Highlight de rastreo
-			local highlight = Instance.new("Highlight")
-			highlight.Name = "MariposaurioTracking"
-			highlight.FillColor = Color3.fromRGB(255, 100, 200)
-			highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-			highlight.Parent = targetToon
-
-			-- Alucinaciones en pantalla del Toonflow por 5 segundos
-			local targetPlayer = Players:GetPlayerFromCharacter(targetToon)
-			if targetPlayer and BlindEffectRemote then
-				BlindEffectRemote:FireClient(targetPlayer, 5)
-			end
-
-			-- Guardar objetivo rastreado en el atributo para usar con Boo!!
-			character:SetAttribute("LastTrackedToon", targetToon.Name)
-
-			task.delay(5, function()
-				if highlight then highlight:Destroy() end
-			end)
-			print("[Mariposaurio] Mariposa enviada a " .. targetToon.Name)
-		end
+		-- Guardar objetivo rastreado para usar con Boo!!
+		lastTracked[character] = targetToon
 	end,
 })
 
@@ -89,51 +123,43 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
-		-- Detectar objetivo en frente
-		local origin = hrp.Position
-		local forward = hrp.CFrame.LookVector
+		-- El Toonflow más cercano frente al Devilish (antes: el primero de workspace:GetChildren())
+		local target = findClosestToonflow(character, hrp, GRAB_RANGE, 0.5)
+		if not target then return false, "NoTarget" end
 
-		for _, target in ipairs(workspace:GetChildren()) do
-			local targetHrp = target:FindFirstChild("HumanoidRootPart")
-			local targetHum = target:FindFirstChildOfClass("Humanoid")
-			local targetStats = StatsModule.GetStats(target)
-			local targetRole = targetStats and targetStats:FindFirstChild("Role")
+		local targetHrp = target:FindFirstChild("HumanoidRootPart")
+		if not targetHrp then return false, "NoTarget" end
 
-			-- Solo objetivos Toonflow vivos
-			if target ~= character and targetHrp and targetHum and targetHum.Health > 0
-				and targetRole and targetRole.Value == StatsModule.Role.Toonflow then
-				local toTarget = (targetHrp.Position - origin)
-				if toTarget.Magnitude <= 8 and forward:Dot(toTarget.Unit) > 0.5 then
+		local applied, outcome = StatsModule.ApplyDamage(target, GRAB_DAMAGE)
+		if not applied then return false, "NoTarget" end
 
-					-- Inmovilizar a la víctima brevemente
-					targetHrp.Anchored = true
-					StatsModule.ApplyDamage(target, 20)
+		-- Inmovilizar a la víctima (si no murió con el golpe). Se libera con un token: dos agarres
+		-- seguidos ya no se sueltan el uno al otro antes de tiempo.
+		if outcome ~= "Dead" then
+			targetHrp.Anchored = true
+			StatsModule.Stun(target, GRAB_HOLD_SECONDS)
 
-					-- Lista de frases crueles psicológicas
-					local cruelQuotes = {
-						"Eres una basura...",
-						"Tu madre nunca te quiso.",
-						"Nadie vendrá a salvarte.",
-						"Solo eres una marioneta rota."
-					}
-					local chosenQuote = cruelQuotes[math.random(1, #cruelQuotes)]
-
-					-- Desplegar mensaje flotante en la pantalla del agredido
-					local targetPlayer = Players:GetPlayerFromCharacter(target)
-					if targetPlayer and PopUpRemote then
-						PopUpRemote:FireClient(targetPlayer, chosenQuote)
-					end
-
-					task.delay(2.5, function()
-						if targetHrp then targetHrp.Anchored = false end
-					end)
-
-					print("[Mariposaurio] Tortura aplicada a " .. target.Name)
-					break
+			local holdId = (targetHrp:GetAttribute("HoldId") or 0) + 1
+			targetHrp:SetAttribute("HoldId", holdId)
+			task.delay(GRAB_HOLD_SECONDS, function()
+				if targetHrp.Parent and targetHrp:GetAttribute("HoldId") == holdId then
+					targetHrp.Anchored = false
 				end
-			end
+			end)
+		end
+
+		-- Frase cruel en la pantalla del agredido
+		local cruelQuotes = {
+			"Eres una basura...",
+			"Tu madre nunca te quiso.",
+			"Nadie vendrá a salvarte.",
+			"Solo eres una marioneta rota.",
+		}
+		local targetPlayer = Players:GetPlayerFromCharacter(target)
+		if targetPlayer and PopUpRemote then
+			PopUpRemote:FireClient(targetPlayer, cruelQuotes[math.random(1, #cruelQuotes)])
 		end
 	end,
 })
@@ -148,44 +174,37 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
-		local targetName = character:GetAttribute("LastTrackedToon")
-		local targetChar = targetName and workspace:FindFirstChild(targetName)
+		-- Último rastreado SI sigue siendo un objetivo válido; si no, el más cercano.
+		-- (Antes: workspace:FindFirstChild(nombre) sin validar: llevaba al Devilish junto a un Toonflow
+		-- muerto o que ya había escapado, es decir, FUERA del mapa, a la zona segura.)
+		local targetChar = lastTracked[character]
+		if not isValidToonflow(targetChar) then
+			targetChar = findClosestToonflow(character, hrp, nil, nil)
+		end
+		if not targetChar then return false, "NoTarget" end
 
-		-- Si no hay objetivo rastreado previo, busca al Toonflow más cercano
-		if not targetChar then
-			local shortestDist = math.huge
-			for _, p in ipairs(Players:GetPlayers()) do
-				local c = p.Character
-				if c and c ~= character then
-					local cHrp = c:FindFirstChild("HumanoidRootPart")
-					local cStats = StatsModule.GetStats(c)
-					local cRole = cStats and cStats:FindFirstChild("Role")
-					local cAlive = cStats and cStats:FindFirstChild("IsAlive") and cStats.IsAlive.Value
-					if cHrp and cAlive and cRole and cRole.Value == StatsModule.Role.Toonflow then
-						local dist = (cHrp.Position - hrp.Position).Magnitude
-						if dist < shortestDist then
-							shortestDist = dist
-							targetChar = c
-						end
-					end
-				end
-			end
+		local targetHrp = targetChar:FindFirstChild("HumanoidRootPart")
+		if not targetHrp then return false, "NoTarget" end
+
+		-- Destino: BOO_BEHIND_DISTANCE studs detrás de la víctima, sin meterse en una pared
+		local behind = targetHrp.CFrame * CFrame.new(0, 0, BOO_BEHIND_DISTANCE)
+		local destination = behind.Position
+
+		local rayParams = RaycastParams.new()
+		rayParams.FilterType = Enum.RaycastFilterType.Exclude
+		rayParams.FilterDescendantsInstances = { character, targetChar }
+		local blocked = workspace:Raycast(targetHrp.Position, destination - targetHrp.Position, rayParams)
+		if blocked then
+			destination = blocked.Position + blocked.Normal * 2.5
 		end
 
-		if targetChar then
-			local targetHrp = targetChar:FindFirstChild("HumanoidRootPart")
-			if targetHrp then
-				-- Teleport a 4 studs DETRÁS de la víctima
-				local backCFrame = targetHrp.CFrame * CFrame.new(0, 0, 4)
-				character:PivotTo(backCFrame)
+		-- Conserva la orientación de la víctima (queda mirando su espalda)
+		character:PivotTo(CFrame.new(destination) * targetHrp.CFrame.Rotation)
+		hrp.AssemblyLinearVelocity = Vector3.zero
 
-				-- Sonido/VFX de aparición espeluznante
-				VFXModule.SpawnMeleeHitVFX(backCFrame.Position, Color3.fromRGB(130, 0, 180))
-				print("[Mariposaurio] ¡Boo!! Apareció detrás de " .. targetChar.Name)
-			end
-		end
+		VFXModule.SpawnMeleeHitVFX(destination, Color3.fromRGB(130, 0, 180))
 	end,
 })
 
@@ -199,22 +218,45 @@ AbilityFramework.Register({
 	Execute = function(params)
 		local character = params.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if not hrp then return end
+		if not hrp then return false, "NoRootPart" end
 
-		-- Buscar Toonflow caído cerca
+		-- Límite de marionetas simultáneas (antes se acumulaban sin límite y no desaparecían)
+		local active = character:GetAttribute("ActivePuppets") or 0
+		if active >= MAX_PUPPETS then return false, "TooManyPuppets" end
+
+		if REQUIRE_DEAD_TOONFLOW then
+			local deadFound = false
+			for _, model in ipairs(workspace:GetChildren()) do
+				local stats = model:IsA("Model") and StatsModule.GetStats(model)
+				local role = stats and stats:FindFirstChild("Role")
+				local isAlive = stats and stats:FindFirstChild("IsAlive")
+				if role and role.Value == StatsModule.Role.Toonflow and isAlive and not isAlive.Value
+					and not model:GetAttribute("PuppetRaised") and not model:GetAttribute("Escaped") then
+					model:SetAttribute("PuppetRaised", true) -- cada eliminado se levanta una sola vez
+					deadFound = true
+					break
+				end
+			end
+			if not deadFound then return false, "NoDeadToonflow" end
+		end
+
 		local spawnPos = hrp.CFrame * CFrame.new(0, 0, -5)
 
 		-- Generar la marioneta usando nuestro BotController
 		local puppetBot = BotController.SpawnBot(StatsModule.Role.Devilish, spawnPos, "PuppetToon")
-		if puppetBot then
-			-- Tinte oscuro / Hilos visuales para el aspecto de marioneta
-			local highlight = Instance.new("Highlight")
-			highlight.FillColor = Color3.fromRGB(50, 50, 50)
-			highlight.OutlineColor = Color3.fromRGB(255, 0, 50)
-			highlight.Parent = puppetBot
+		if not puppetBot then return false, "SpawnFailed" end
 
-			print("[Mariposaurio] Marioneta levantada con 'dead hope'.")
-		end
+		character:SetAttribute("ActivePuppets", active + 1)
+		puppetBot.Destroying:Connect(function()
+			character:SetAttribute("ActivePuppets", math.max(0, (character:GetAttribute("ActivePuppets") or 1) - 1))
+		end)
+		Debris:AddItem(puppetBot, PUPPET_LIFETIME)
+
+		-- Tinte oscuro / Hilos visuales para el aspecto de marioneta
+		local highlight = Instance.new("Highlight")
+		highlight.FillColor = Color3.fromRGB(50, 50, 50)
+		highlight.OutlineColor = Color3.fromRGB(255, 0, 50)
+		highlight.Parent = puppetBot
 	end,
 })
 

@@ -45,6 +45,13 @@ local currentMatchState = "Intermission"
 local function applyUIVisibility(matchState)
 	currentMatchState = matchState
 
+	-- Re-resolver las GUI en cada llamada: si alguna tiene ResetOnSpawn = true se reclona al
+	-- reaparecer el personaje (el servidor reemplaza el Character en cada partida) y las
+	-- referencias guardadas al inicio apuntarían a instancias destruidas.
+	local LobbyGUI = PlayerGui:FindFirstChild("LobbyGUI")
+	local GameGUI = PlayerGui:FindFirstChild("GameGUI")
+	local GlobalGUI = PlayerGui:FindFirstChild("GlobalGUI")
+
 	-- Mantener GlobalGUI siempre activo para temporizadores y controles táctiles
 	if GlobalGUI then
 		GlobalGUI.Enabled = true
@@ -79,6 +86,11 @@ end)
 
 -- == MANEJO DE MUERTE DEL JUGADOR ==
 player.CharacterAdded:Connect(function(character)
+	-- Re-sincronizar la visibilidad por si las GUI se reclonaron con el nuevo personaje
+	task.delay(0.3, function()
+		applyUIVisibility(currentMatchState)
+	end)
+
 	local humanoid = character:WaitForChild("Humanoid", 5)
 	if humanoid then
 		humanoid.Died:Connect(function()

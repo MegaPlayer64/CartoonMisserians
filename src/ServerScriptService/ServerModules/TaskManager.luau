@@ -78,8 +78,37 @@ end
 	    onTaskCompleted(completed, total)
 	    onAllCompleted(completed, total)
 ]]
+-- Interacciones canceladas por un efecto del Devilish (p. ej. el grito de Shed.mov): hasta cuándo
+-- no se puede empezar ni completar una tarea. Claves débiles: no retiene jugadores que se van.
+local interruptedUntil = setmetatable({}, { __mode = "k" })
+
+local InterruptRemote = game:GetService("ReplicatedStorage").Framework.Remotes:FindFirstChild("CancelInteraction")
+
+-- Cancela YA la tarea que el jugador esté manteniendo y le impide reanudarla `seconds` segundos.
+-- El servidor es la autoridad (getEligibleCharacter lo rechaza); además se avisa al cliente para
+-- que cierre la barra de "mantener pulsado". Las reanimaciones deben consultar IsInterrupted.
+function TaskManager.Interrupt(player, seconds)
+	interruptedUntil[player] = os.clock() + (seconds or 1)
+
+	if InterruptRemote then
+		InterruptRemote:FireClient(player)
+	end
+
+	local character = player.Character
+	if character then
+		-- Soltar la inmovilidad de "estoy reparando" (respeta un aturdimiento activo)
+		StatsModule.ResetSpeedMultiplier(character)
+	end
+end
+
+function TaskManager.IsInterrupted(player)
+	return (interruptedUntil[player] or 0) > os.clock()
+end
+
 -- Solo un Toonflow vivo, en pie y con Stats de partida puede interactuar con tareas.
 local function getEligibleCharacter(player)
+	if player and (interruptedUntil[player] or 0) > os.clock() then return nil end
+
 	local character = player and player.Character
 	if not character then return nil end
 	if character:GetAttribute("Escaped") then return nil end

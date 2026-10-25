@@ -87,7 +87,9 @@ MeleeAttackRemote.OnServerEvent:Connect(function(player)
 	if not (lastAttackTime and attackCooldown) then return end
 
 	local currentTime = os.clock()
-	if currentTime - lastAttackTime.Value < attackCooldown.Value then
+	-- AttackSpeedMultiplier (p. ej. 1.5 = +50% de velocidad de ataque en el ultimate de Shed.mov)
+	local attackSpeed = math.max(0.1, character:GetAttribute("AttackSpeedMultiplier") or 1)
+	if currentTime - lastAttackTime.Value < attackCooldown.Value / attackSpeed then
 		return -- Todavia en cooldown
 	end
 

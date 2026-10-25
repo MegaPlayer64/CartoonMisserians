@@ -156,6 +156,27 @@ CharacterDatabase.Devilishes = {
 			Slot4 = "DeadHope",
 		},
 	},
+	{
+		Name = "Shedmov",
+		DisplayName = "Shed.mov",
+		Description = "DEVILISH asesino. Velocidad letal y ataques imparables.",
+		Color = Color3.fromRGB(57, 216, 110),
+		Stats = {
+			MaxHealth = 1100,
+			WalkSpeed = 16,
+			SprintSpeed = 23,
+			AttackRange = 8,
+			AttackCooldown = 1.0,
+			AttackDamage = 24,
+			AbsorptionMax = 100,
+			AbsorptionPerHit = 10,
+		},
+		Abilities = {
+			Slot1 = "CargaMotosierra",
+			Slot2 = "FueraDeMiCobertizo",
+			Slot3 = "BienvenidaAPonyville",
+		},
+	},
 }
 
 -- == VALORES POR DEFECTO ==

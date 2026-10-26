@@ -83,6 +83,7 @@ local function setupCharacter(newCharacter)
 	character = newCharacter
 	humanoid = character:WaitForChild("Humanoid")
 	humanoid.UseJumpPower = true
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
 	lastHealth = humanoid.Health
 
 	-- Obtener velocidad de sprint desde CharacterDatabase si está definida
@@ -148,12 +149,10 @@ connections[#connections + 1] = RunService.RenderStepped:Connect(function(dt)
 	---------------------------------------------------------
 	-- 2. LÓGICA DE SALTO DINÁMICO
 	---------------------------------------------------------
-	if stamina < JUMP_MIN_STAMINA or isExhausted or serverMult == 0 then
-		humanoid.JumpPower = 0
-	else
-		local staminaFactor = (stamina - JUMP_MIN_STAMINA) / (MAX_STAMINA - JUMP_MIN_STAMINA)
-		humanoid.JumpPower = MIN_JUMP_POWER + (staminaFactor * (MAX_JUMP_POWER - MIN_JUMP_POWER))
-	end
+	-- QNA: el salto está desactivado en todo el juego. Antes la altura dependía de la stamina y este bucle
+	-- reescribía JumpPower en cada frame, anulando el valor que fija el servidor.
+	humanoid.JumpPower = 0
+	humanoid.JumpHeight = 0
 
 	---------------------------------------------------------
 	-- 3. FOV DINÁMICO

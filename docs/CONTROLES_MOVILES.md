@@ -21,6 +21,7 @@
 - Se muestran solo cuando el último input es táctil; en tablets/portátiles con teclado se ocultan.
 - Respeta el área segura (notch) y se escala con la pantalla.
 - Los botones se ocultan al escapar (zona segura) y fuera de partida (el sprint se queda).
+- Sin salto (QNA): ATACAR va en la esquina inferior derecha, CORRER encima (o en la esquina si no hay ataque) y las habilidades a su izquierda.
 - Los botones antiguos de `ActionContainer` se ocultan; borra `M1Button`/`SprintButton` de tu GUI
   si no los vas a usar.
 
@@ -31,6 +32,6 @@
 3. Entra en una partida de prueba y comprueba habilidades, cooldowns, ataque y sprint.
 
 ## Ajustes
-Las constantes de diseño (tamaños, márgenes, `JUMP_CLEARANCE`, colores) están arriba de
+Las constantes de diseño (tamaños, márgenes, colores) están arriba de
 `MobileControls.client.luau`. Si el botón de emotes u otro elemento del HUD se solapa con los
-botones, mueve la cuadrícula cambiando `JUMP_CLEARANCE`/`EDGE_MARGIN`.
+botones, ajusta `EDGE_MARGIN` o las posiciones de `layout()`. (El hueco del botón de salto ya no existe: el salto está desactivado.)

@@ -24,6 +24,17 @@ local MapVoteResponseRemote = Remotes:WaitForChild("MapVoteResponse")
 
 local MapSelection = {}
 
+-- Lo que ve el Devilish de cada mapa (copia: no se expone la tabla de configuración tal cual)
+local function toOption(map)
+	return {
+		Name = map.Name,
+		DisplayName = map.DisplayName,
+		Category = map.Category,
+		RecommendedKillers = map.RecommendedKillers or {},
+		ExitCount = MatchConfig.ExitsByCategory[map.Category] or 1,
+	}
+end
+
 --[[
 	Genera una lista de opciones de mapa (por defecto 3), tomando un mapa
 	aleatorio de cada categoria (Pequeño, Mediano, Grande). Si alguna categoria
@@ -45,7 +56,7 @@ function MapSelection.GetVoteOptions(count)
 		if #categoryMaps > 0 then
 			local chosen = categoryMaps[math.random(1, #categoryMaps)]
 			if not used[chosen.Name] then
-				table.insert(options, chosen)
+				table.insert(options, toOption(chosen))
 				used[chosen.Name] = true
 			end
 		end
@@ -60,7 +71,7 @@ function MapSelection.GetVoteOptions(count)
 	end
 	while #options < count and #remaining > 0 do
 		local idx = math.random(1, #remaining)
-		table.insert(options, remaining[idx])
+		table.insert(options, toOption(remaining[idx]))
 		table.remove(remaining, idx)
 	end
 

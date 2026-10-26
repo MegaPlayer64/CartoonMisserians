@@ -18,6 +18,11 @@
       "StarterCharacterScripts": {
         "$path": "src/StarterPlayer/StarterCharacterScripts",
         "$ignoreUnknownInstances": true
+      },
+      "$properties": {
+        "CharacterUseJumpPower": true,
+        "CharacterJumpPower": 0,
+        "CharacterJumpHeight": 0
       }
     },
     "StarterGui": {

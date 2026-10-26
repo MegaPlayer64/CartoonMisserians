@@ -34,6 +34,7 @@ local SESSION_LOCK_SECONDS = 180 -- debe ser > AUTOSAVE_SECONDS (el autosave ren
 local AUTOSAVE_SECONDS = 60
 local STARTING_COINS = 100
 local MAX_COINS = 1_000_000_000
+local MAX_MALDAD = 1_000_000_000
 local EMOTE_SLOTS = 6
 local MAX_MASTERY_JSON_BYTES = 200_000 -- tope defensivo; el límite de DataStore es 4 MB por clave
 local IS_STUDIO = RunService:IsStudio()
@@ -43,6 +44,8 @@ local SAVE_ATTEMPTS = 4
 export type Data = {
 	version: number,
 	coins: number,
+	-- "Maldad": segunda moneda (NO son los Cartoonsitos = Coins). Se gana según la calificación de la partida.
+	maldad: number,
 	ownedEmotes: { string },
 	equippedEmotes: { string },
 	-- JSON de MasteryAndTrophyServer (maestrías, logros, skins). "" = sin datos aún.
@@ -60,6 +63,7 @@ local function defaults(): Data
 	return {
 		version = SCHEMA_VERSION,
 		coins = STARTING_COINS,
+		maldad = 0,
 		ownedEmotes = { "Happy", "Angry", "GG" },
 		equippedEmotes = { "Happy", "Angry", "GG", "", "", "" },
 		masteryData = "",
@@ -99,6 +103,10 @@ local function sanitize(raw: any): Data
 	if type(coins) == "number" and coins == coins then
 		base.coins = math.clamp(math.floor(coins), 0, MAX_COINS)
 	end
+	local maldad = raw.maldad
+	if type(maldad) == "number" and maldad == maldad then
+		base.maldad = math.clamp(math.floor(maldad), 0, MAX_MALDAD)
+	end
 	base.ownedEmotes = sanitizeStringList(raw.ownedEmotes, base.ownedEmotes, nil)
 	base.equippedEmotes = sanitizeStringList(raw.equippedEmotes, base.equippedEmotes, EMOTE_SLOTS)
 	local mastery = raw.masteryData
@@ -133,6 +141,7 @@ end
 local function snapshot(player: Player): Data
 	return sanitize({
 		coins = player:GetAttribute("Coins"),
+		maldad = player:GetAttribute("Maldad"),
 		ownedEmotes = decodeList(player:GetAttribute("OwnedEmotes")),
 		equippedEmotes = decodeList(player:GetAttribute("EquippedEmotes")),
 		masteryData = player:GetAttribute("MasteryData"),
@@ -141,6 +150,7 @@ end
 
 local function applyToPlayer(player: Player, data: Data)
 	player:SetAttribute("Coins", data.coins)
+	player:SetAttribute("Maldad", data.maldad)
 	player:SetAttribute("OwnedEmotes", HttpService:JSONEncode(data.ownedEmotes))
 	player:SetAttribute("EquippedEmotes", HttpService:JSONEncode(data.equippedEmotes))
 	if data.masteryData ~= "" then
@@ -333,6 +343,32 @@ local PlayerData = {}
 -- true cuando los atributos del jugador ya reflejan su perfil guardado.
 function PlayerData.isLoaded(player: Player): boolean
 	return player:GetAttribute("DataLoaded") == true
+end
+
+-- Suma Maldad (nunca resta ni acepta NaN/infinito). Solo con el perfil ya cargado. Guarda al momento:
+-- la calificación se otorga al terminar la partida y no debe perderse por un cierre del servidor.
+-- Devuelve el nuevo total, o nil si no se pudo.
+function PlayerData.addMaldad(player: Player, amount: number): number?
+	if type(amount) ~= "number" or amount ~= amount or amount <= 0 then
+		return nil
+	end
+	if not PlayerData.isLoaded(player) then
+		return nil
+	end
+
+	local current = player:GetAttribute("Maldad")
+	if type(current) ~= "number" then
+		current = 0
+	end
+	local total = math.clamp(math.floor(current + amount), 0, MAX_MALDAD)
+	player:SetAttribute("Maldad", total)
+	PlayerData.saveNow(player)
+	return total
+end
+
+function PlayerData.getMaldad(player: Player): number
+	local value = player:GetAttribute("Maldad")
+	return if type(value) == "number" then value else 0
 end
 
 -- Guardado inmediato (p. ej. tras una compra), sin liberar la sesión.

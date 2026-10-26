@@ -61,9 +61,19 @@ MatchConfig.MapCategories = {
 	Grande = "Grande",
 }
 
+-- Salidas activas por tamaño de mapa (QNA): Chico 1, Mediano 2, Grande 3.
+-- Un mapa puede tener más Models de salida de los que se activan: se eligen al azar.
+MatchConfig.ExitsByCategory = {
+	["Pequeño"] = 1,
+	["Mediano"] = 2,
+	["Grande"] = 3,
+}
+
+-- RecommendedKillers: nombres canónicos de CharacterDatabase (p. ej. "Shedmov", "Stan.oma.png");
+-- se muestran al Devilish en la votación. Vacío = no se muestra la línea.
 MatchConfig.AvailableMaps = {
-	{ Name = "GameMap_Example", Category = "Mediano" },
-	{ Name = "DigitalCircus", Category = "Grande" },
+	{ Name = "GameMap_Example", Category = "Mediano", RecommendedKillers = {} },
+	{ Name = "DigitalCircus", Category = "Grande", RecommendedKillers = {} },
 }
 
 -- == ESTADOS DE PARTIDA (enum-like) ==

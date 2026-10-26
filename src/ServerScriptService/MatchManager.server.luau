@@ -47,10 +47,57 @@ local exitThread = nil
 local escapedToonflows = {}  -- [Player] = true
 local tasksCompleted = 0
 local lmsPlayer = nil  -- [Player] ultimo sobreviviente Toonflow
-local exitTriggerConnection = nil
+local exitTriggerConnections = {}
+local activeExits = {} -- Models de salida activos en ESTA partida (según el tamaño del mapa)
 
-local function getExitModel()
-	return currentMap and (currentMap:FindFirstChild("Exit") or currentMap:FindFirstChild("ExitDoor"))
+-- Salidas del mapa: una carpeta "Exits" con un Model por salida; si no existe, la salida única
+-- heredada ("Exit" o "ExitDoor").
+local function getExitModels()
+	local models = {}
+	if not currentMap then return models end
+
+	local folder = currentMap:FindFirstChild("Exits")
+	if folder then
+		for _, child in ipairs(folder:GetChildren()) do
+			if child:IsA("Model") or child:IsA("BasePart") then
+				table.insert(models, child)
+			end
+		end
+	else
+		local single = currentMap:FindFirstChild("Exit") or currentMap:FindFirstChild("ExitDoor")
+		if single then
+			table.insert(models, single)
+		end
+	end
+	return models
+end
+
+local function getMapCategory()
+	if not currentMap then return nil end
+	for _, map in ipairs(MatchConfig.AvailableMaps) do
+		if map.Name == currentMap.Name then
+			return map.Category
+		end
+	end
+	return nil
+end
+
+-- QNA: Chico 1 salida, Mediano 2, Grande 3. Si el mapa tiene más Models de salida de los que
+-- le tocan, se eligen al azar; si tiene menos, se usan todos.
+local function selectActiveExits()
+	local models = getExitModels()
+	local allowed = MatchConfig.ExitsByCategory[getMapCategory()] or 1
+
+	for i = #models, 2, -1 do
+		local j = math.random(i)
+		models[i], models[j] = models[j], models[i]
+	end
+
+	local active = {}
+	for i = 1, math.min(allowed, #models) do
+		active[i] = models[i]
+	end
+	return active
 end
 
 -- Abre (sin colisión, semitransparente) o cierra visualmente la puerta de salida.
@@ -61,6 +108,12 @@ local function setExitVisuals(exitModel, open)
 			part.CanCollide = not open
 			part.Transparency = open and 0.5 or 0
 		end
+	end
+end
+
+local function setAllExitVisuals(open)
+	for _, exitModel in ipairs(activeExits) do
+		setExitVisuals(exitModel, open)
 	end
 end
 
@@ -378,15 +431,16 @@ local function cleanupMatch()
 		exitThread = nil
 	end
 	if exitOpen then
-		setExitVisuals(getExitModel(), false)
+		setAllExitVisuals(false)
 		ExitTimerRemote:FireAllClients({ remaining = 0, open = false })
 	end
 	exitOpen = false
 	exitClosed = false
-	if exitTriggerConnection then
-		exitTriggerConnection:Disconnect()
-		exitTriggerConnection = nil
+	for _, connection in ipairs(exitTriggerConnections) do
+		connection:Disconnect()
 	end
+	table.clear(exitTriggerConnections)
+	activeExits = {}
 	for player, _ in pairs(assignedRoles) do
 		if typeof(player) == "Instance" and player:IsA("Player") then
 			AbilityFramework.ClearPlayer(player)
@@ -438,13 +492,19 @@ local function activateLMS()
 	print("[MatchManager] LMS activado para " .. nameStr)
 end
 
+-- Duración de la salida abierta. PUNTO ÚNICO de la regla de "tiempo de salida según tareas" (QNA):
+-- cuando se confirme la fórmula, se cambia SOLO esta función (hoy: valor fijo de MatchConfig).
+-- Ver docs/QNA_ACTUALIZACION.md.
+local function computeExitDuration()
+	return MatchConfig.ExitOpenDuration
+end
+
 local function openExit(duration)
 	if exitOpen then return end
 	exitOpen = true
 	exitClosed = false
 
-	local exitModel = getExitModel()
-	setExitVisuals(exitModel, true)
+	setAllExitVisuals(true)
 
 	ExitTimerRemote:FireAllClients({ remaining = duration, open = true })
 
@@ -462,7 +522,7 @@ local function openExit(duration)
 		exitOpen = false
 		exitClosed = true
 
-		setExitVisuals(exitModel, false)
+		setAllExitVisuals(false)
 
 		ExitTimerRemote:FireAllClients({ remaining = 0, open = false })
 	end)
@@ -480,44 +540,49 @@ local function getSafeZoneSpawn()
 	return lobby and lobby:FindFirstChild("LobbySpawn")
 end
 
-local function setupExitTrigger()
-	local exitModel = currentMap and (currentMap:FindFirstChild("Exit") or currentMap:FindFirstChild("ExitDoor"))
-	if not exitModel then return end
+local function onExitTouched(otherPart)
+	if not exitOpen then return end
 
-	local trigger = exitModel:FindFirstChild("Trigger") or exitModel:FindFirstChild("ExitSpawn") or exitModel
-	if not trigger or not trigger:IsA("BasePart") then return end
+	-- Model ancestro (no Parent): un accesorio o una parte anidada también cuenta
+	local character = otherPart:FindFirstAncestorOfClass("Model")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return end
 
-	if exitTriggerConnection then
-		exitTriggerConnection:Disconnect()
-	end
-	exitTriggerConnection = trigger.Touched:Connect(function(otherPart)
-		if not exitOpen then return end
+	local player = Players:GetPlayerFromCharacter(character)
+	if not player then return end
+	if assignedRoles[player] ~= StatsModule.Role.Toonflow then return end
+	if escapedToonflows[player] then return end
 
-		local character = otherPart.Parent
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if not humanoid or humanoid.Health <= 0 then return end
+	local stats = StatsModule.GetStats(character)
+	local isAlive = stats and stats:FindFirstChild("IsAlive") and stats.IsAlive.Value
+	local isDowned = character:GetAttribute("IsDowned") or false
 
-		local player = Players:GetPlayerFromCharacter(character)
-		if not player then return end
-		if assignedRoles[player] ~= StatsModule.Role.Toonflow then return end
-		if escapedToonflows[player] then return end
-
-		local stats = StatsModule.GetStats(character)
-		local isAlive = stats and stats:FindFirstChild("IsAlive") and stats.IsAlive.Value
-		local isDowned = character:GetAttribute("IsDowned") or false
-
-		if isAlive and not isDowned then
-			escapedToonflows[player] = true
-			-- Invulnerable (StatsModule.ApplyDamage lo respeta) y fuera del alcance del
-			-- Devilish: antes seguía en el mapa y podía ser golpeado después de escapar.
-			character:SetAttribute("Escaped", true)
-			local safeSpawn = getSafeZoneSpawn()
-			if safeSpawn then
-				teleportPlayer(player, safeSpawn)
-			end
-			print("[MatchManager] " .. player.Name .. " escapó exitosamente por la salida!")
+	if isAlive and not isDowned then
+		escapedToonflows[player] = true
+		-- Invulnerable (StatsModule.ApplyDamage lo respeta) y fuera del alcance del
+		-- Devilish: antes seguía en el mapa y podía ser golpeado después de escapar.
+		character:SetAttribute("Escaped", true)
+		local safeSpawn = getSafeZoneSpawn()
+		if safeSpawn then
+			teleportPlayer(player, safeSpawn)
 		end
-	end)
+		print("[MatchManager] " .. player.Name .. " escapó exitosamente por la salida!")
+	end
+end
+
+-- Un Touched por cada salida activa (cualquiera sirve para escapar)
+local function setupExitTrigger()
+	for _, connection in ipairs(exitTriggerConnections) do
+		connection:Disconnect()
+	end
+	table.clear(exitTriggerConnections)
+
+	for _, exitModel in ipairs(activeExits) do
+		local trigger = exitModel:FindFirstChild("Trigger") or exitModel:FindFirstChild("ExitSpawn") or exitModel
+		if trigger and trigger:IsA("BasePart") then
+			table.insert(exitTriggerConnections, trigger.Touched:Connect(onExitTouched))
+		end
+	end
 end
 
 -- == ESTADOS DE PARTIDA ==
@@ -645,6 +710,7 @@ local function runInProgress()
 	exitClosed = false
 	tasksCompleted = 0
 
+	activeExits = selectActiveExits()
 	setupExitTrigger()
 
 	broadcastMatchState(currentMatchState, {
@@ -671,7 +737,7 @@ local function runInProgress()
 					TaskProgressRemote:FireAllClients({ completed = completed, total = total })
 				end
 				if not exitOpen then
-					openExit(MatchConfig.ExitOpenDuration)
+					openExit(computeExitDuration())
 				end
 			end,
 		})

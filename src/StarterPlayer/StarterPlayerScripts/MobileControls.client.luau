@@ -6,7 +6,7 @@
 	correr (solo existía un contenedor sin lógica) y cualquier toque en pantalla lanzaba un
 	ataque melee, incluso al arrastrar para girar la cámara.
 
-	Botones (a la derecha, fuera de la zona del joystick de Roblox y de su botón de salto):
+	Botones (a la derecha, fuera de la zona del joystick de Roblox; el salto está desactivado):
 	  - Habilidades 1-4: según el personaje (AbilityLoadouts), con cuenta atrás de cooldown.
 	  - ATACAR (solo Devilish): mantener pulsado repite el ataque.
 	  - CORRER: interruptor (activar/desactivar). Corre mientras te mueves y queda stamina.
@@ -46,7 +46,6 @@ local ABILITY_SIZE = 66
 local ACTION_SIZE = 74
 local GAP = 12
 local EDGE_MARGIN = 22
-local JUMP_CLEARANCE = 132 -- espacio que ocupa el botón de salto de Roblox (abajo a la derecha)
 local MELEE_REPEAT_SECONDS = 0.2
 
 local COLOR_IDLE = Color3.fromRGB(36, 38, 52)
@@ -164,14 +163,17 @@ local function layout()
 	local margin = px(EDGE_MARGIN)
 	local gap = px(GAP)
 
-	-- Columna derecha, encima del salto: CORRER y ATACAR
-	sprintButton.Size = UDim2.fromOffset(action, action)
-	sprintButton.Position = UDim2.new(1, -margin, 1, -(px(JUMP_CLEARANCE) + gap))
+	-- Sin salto (QNA) la esquina inferior derecha queda libre: ATACAR (Devilish) abajo y CORRER encima.
+	-- Sin botón de ataque (Toonflow), CORRER ocupa la esquina.
 	meleeButton.Size = UDim2.fromOffset(action, action)
-	meleeButton.Position = UDim2.new(1, -margin, 1, -(px(JUMP_CLEARANCE) + gap + action + gap))
+	meleeButton.Position = UDim2.new(1, -margin, 1, -margin)
 
-	-- Cuadrícula 2x2 de habilidades a la izquierda del botón de salto
-	local gridRight = margin + px(JUMP_CLEARANCE) - px(6)
+	sprintButton.Size = UDim2.fromOffset(action, action)
+	local sprintBottom = meleeButton.Visible and (margin + action + gap) or margin
+	sprintButton.Position = UDim2.new(1, -margin, 1, -sprintBottom)
+
+	-- Cuadrícula 2x2 de habilidades a la izquierda de esa columna
+	local gridRight = margin + action + gap
 	local col2Right = gridRight + ability + gap
 	local row2Bottom = margin + ability + gap
 	local positions = {
@@ -232,6 +234,8 @@ local function refreshVisibility()
 		local abilityName = loadout[slot]
 		button.Visible = inAction and abilityName ~= nil and abilityName ~= ""
 	end
+
+	layout() -- CORRER sube o baja según el botón de ataque esté o no visible
 end
 
 UserInputService.LastInputTypeChanged:Connect(refreshVisibility)

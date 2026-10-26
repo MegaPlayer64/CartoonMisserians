@@ -23,6 +23,7 @@ local MusicData = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChi
 local Remotes = ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Remotes")
 local MatchStateRemote = Remotes:WaitForChild("MatchState")
 local MapChosenRemote = Remotes:FindFirstChild("MapChosen")
+local LMSActivatedRemote = Remotes:FindFirstChild("LMSActivated")
 
 local FADE_TIME = 0.8
 local VOLUMES = {
@@ -32,6 +33,7 @@ local VOLUMES = {
 	Tension2 = 0.6,
 	Tension3 = 0.7,
 	Chase = 0.8,
+	LMS = 0.8,
 }
 
 local currentPhase = ""
@@ -40,6 +42,7 @@ local myRole = nil
 local currentMapName = "Default"
 local devilishPlayer = nil
 local devilishCharacter = nil
+local lmsActive = false -- Last Man Standing: queda un solo Toonflow en pie
 
 local sounds = {}
 local activeTweens = {}
@@ -155,6 +158,19 @@ local function getDevilishSoundId(devilishChar, soundType)
 	return MusicData.TensionLayers["Default"][soundType]
 end
 
+-- Tema del Last Man Standing: skin > personaje > Default (mismo criterio que los demás temas)
+local function getLMSSoundId(devilishChar)
+	local lms = MusicData.LMS
+	if not lms then return nil end
+	if devilishChar then
+		local skin = devilishChar:GetAttribute("EquippedSkin") or devilishChar:GetAttribute("MasterySkin")
+		local charName = devilishChar:GetAttribute("CharacterName") or devilishChar:GetAttribute("SelectedDevilish")
+		if skin and lms[skin] then return lms[skin] end
+		if charName and lms[charName] then return lms[charName] end
+	end
+	return lms["Default"]
+end
+
 local function findDevilishPlayer()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= player and p.Character then
@@ -184,6 +200,15 @@ local function startAudioLoop()
 	loopThread = task.spawn(function()
 		while inMatch do
 			task.wait(0.2)
+
+			-- LMS: el tema del Last Man Standing sustituye al ambiente y a las capas de tensión/persecución
+			if lmsActive then
+				local lmsId = getLMSSoundId(devilishCharacter)
+				if lmsId then
+					switchPhase("LMS", lmsId)
+					continue
+				end
+			end
 
 			if myRole ~= "Toonflow" or not isPlayerAlive(player) then
 				local mapId = MusicData.Maps[currentMapName] or MusicData.Maps["Default"]
@@ -248,6 +273,7 @@ end
 MatchStateRemote.OnClientEvent:Connect(function(state, data)
 	if state == "Intermission" then
 		inMatch = false
+		lmsActive = false
 		myRole = nil
 		devilishPlayer = nil
 		devilishCharacter = nil
@@ -255,6 +281,7 @@ MatchStateRemote.OnClientEvent:Connect(function(state, data)
 		switchPhase("Lobby", MusicData.Lobby)
 
 	elseif state == "RoleAssigned" then
+		lmsActive = false
 		if data and data.role then
 			myRole = data.role
 		end
@@ -271,10 +298,19 @@ MatchStateRemote.OnClientEvent:Connect(function(state, data)
 
 	elseif state == "Ending" then
 		inMatch = false
+		lmsActive = false
 		stopAudioLoop()
 		switchPhase("Lobby", MusicData.Lobby)
 	end
 end)
+
+-- El servidor avisa UNA vez cuando queda un solo Toonflow en pie (MatchManager.activateLMS)
+if LMSActivatedRemote then
+	LMSActivatedRemote.OnClientEvent:Connect(function()
+		if not inMatch then return end
+		lmsActive = true
+	end)
+end
 
 if MapChosenRemote then
 	MapChosenRemote.OnClientEvent:Connect(function(data)

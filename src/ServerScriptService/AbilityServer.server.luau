@@ -30,6 +30,7 @@ local StanAbilities = require(game:GetService("ServerScriptService").ServerModul
 local MariposaurioAbilities = require(game:GetService("ServerScriptService").ServerModules.MariposaurioAbilities)
 local DeerphinaAbilities = require(game:GetService("ServerScriptService").ServerModules.DeerphinaAbilities)
 local MissCircleAbilities = require(game:GetService("ServerScriptService").ServerModules.MissCircleAbilities)
+local ShedMovAbilities = require(game:GetService("ServerScriptService").ServerModules.ShedMovAbilities)
 
 local Remotes = ReplicatedStorage.Framework.Remotes
 local UseAbilityRemote = Remotes:WaitForChild("UseAbility")

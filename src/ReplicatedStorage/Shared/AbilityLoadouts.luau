@@ -33,6 +33,7 @@ AbilityLoadouts.ByCharacter = {
 	["Stan.oma.png"] = { "RayoCorrupto", "BetterCallStan", "CorrupcionGrave", "CambioArma" },
 	Mariposaurio = { "HereComes", "AThought", "Boo", "DeadHope" },
 	Neuro = { "CallOfStardoom", "LightsAndAction", "LastShow" },
+	Shedmov = { "CargaMotosierra", "FueraDeMiCobertizo", "BienvenidaAPonyville" },
 } :: { [string]: { string } }
 
 -- Personajes sin entrada propia (p. ej. bots o nuevos aún sin configurar).

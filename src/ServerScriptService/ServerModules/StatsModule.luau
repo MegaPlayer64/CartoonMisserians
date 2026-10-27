@@ -13,6 +13,10 @@ local SSJ_SPEED_MULTIPLIER = 1.35
 local FAME_SPEED_MULTIPLIER = 1.25
 local FAME_SPEED_THRESHOLD = 45
 
+-- Fuentes de velocidad con nombre (ver ApplySpeedMultiplier): [personaje] = { [nombre] = { multiplier, token } }.
+-- Se combinan multiplicando y caducan solas; claves débiles, no retienen personajes destruidos.
+local speedSources = setmetatable({}, { __mode = "k" })
+
 -- == ENUMERACION DE ESTADOS DE PERSONAJE ==
 StatsModule.CharacterState = {
 	Normal = "Normal",
@@ -29,6 +33,7 @@ StatsModule.Role = {
 }
 
 function StatsModule.InitializeStats(character, role, config)
+	speedSources[character] = nil
 	local existing = character:FindFirstChild("Stats")
 	if existing then
 		existing:Destroy()
@@ -212,6 +217,9 @@ function StatsModule.SetSpeedMultiplier(character, multiplier)
 	local stats = StatsModule.GetStats(character)
 	if not stats then return false end
 
+	-- Inmunidad a ralentizaciones: se ignora cualquier multiplicador < 1
+	if multiplier < 1 and character:GetAttribute("SlowImmune") then return false end
+
 	local speedMult = stats:FindFirstChild("SpeedMultiplier")
 	local walkSpeed = stats:FindFirstChild("WalkSpeed")
 	if not (speedMult and walkSpeed) then return false end
@@ -233,14 +241,28 @@ local function baselineSpeedMultiplier(character, stats)
 	if state and state.Value == StatsModule.CharacterState.Stunned then
 		return 0
 	end
+
+	local multiplier = 1.0
 	local ssj = stats:FindFirstChild("IsSuperSaiyan")
 	if ssj and ssj.Value then
-		return SSJ_SPEED_MULTIPLIER
+		multiplier = SSJ_SPEED_MULTIPLIER
+	elseif (character:GetAttribute("Fame") or 0) >= FAME_SPEED_THRESHOLD then
+		multiplier = FAME_SPEED_MULTIPLIER
 	end
-	if (character:GetAttribute("Fame") or 0) >= FAME_SPEED_THRESHOLD then
-		return FAME_SPEED_MULTIPLIER
+
+	-- Fuentes con nombre (bonos de Shed.mov, ralentizaciones de habilidades...). Con SlowImmune
+	-- las que ralentizan (< 1) se ignoran.
+	local sources = speedSources[character]
+	if sources then
+		local slowImmune = character:GetAttribute("SlowImmune")
+		for _, source in pairs(sources) do
+			if not (slowImmune and source.multiplier < 1) then
+				multiplier *= source.multiplier
+			end
+		end
 	end
-	return 1.0
+
+	return multiplier
 end
 
 -- Antes forzaba 1.0: terminar de interactuar con una tarea, o expirar una
@@ -310,6 +332,11 @@ function StatsModule.SetState(character, newState)
 	local isDowned = stats:FindFirstChild("IsDowned")
 	if not state then return false end
 
+	-- Inmunidad total a aturdimientos (p. ej. Shed.mov en su ultimate)
+	if newState == StatsModule.CharacterState.Stunned and character:GetAttribute("StunImmune") then
+		return false
+	end
+
 	state.Value = newState
 
 	if newState == StatsModule.CharacterState.Dead then
@@ -341,6 +368,7 @@ end
 function StatsModule.Stun(character, duration)
 	local stats = StatsModule.GetStats(character)
 	if not stats or character:GetAttribute("Escaped") then return false end
+	if character:GetAttribute("StunImmune") then return false end
 	if typeof(duration) ~= "number" or duration ~= duration or duration <= 0 then return false end
 
 	local state = stats:FindFirstChild("State")
@@ -364,6 +392,62 @@ function StatsModule.Stun(character, duration)
 	end)
 
 	return true
+end
+
+-- Aplica un multiplicador de velocidad con NOMBRE (bonos y ralentizaciones que se combinan entre
+-- sí). `duration` opcional: sin ella dura hasta RemoveSpeedMultiplier. Volver a aplicar el mismo
+-- nombre lo refresca (y el temporizador anterior ya no lo quita: token). Con SlowImmune las
+-- ralentizaciones (< 1) se rechazan. Un aturdimiento activo sigue mandando (velocidad 0).
+function StatsModule.ApplySpeedMultiplier(character, sourceName, multiplier, duration)
+	if typeof(multiplier) ~= "number" or multiplier ~= multiplier or multiplier < 0 then return false end
+	if not StatsModule.GetStats(character) then return false end
+	if multiplier < 1 and character:GetAttribute("SlowImmune") then return false end
+
+	local sources = speedSources[character]
+	if not sources then
+		sources = {}
+		speedSources[character] = sources
+	end
+
+	local token = (sources[sourceName] and sources[sourceName].token or 0) + 1
+	sources[sourceName] = { multiplier = multiplier, token = token }
+	StatsModule.ResetSpeedMultiplier(character)
+
+	if typeof(duration) == "number" and duration > 0 then
+		task.delay(duration, function()
+			local current = sources[sourceName]
+			if current and current.token == token then
+				sources[sourceName] = nil
+				if character.Parent then
+					StatsModule.ResetSpeedMultiplier(character)
+				end
+			end
+		end)
+	end
+
+	return true
+end
+
+function StatsModule.RemoveSpeedMultiplier(character, sourceName)
+	local sources = speedSources[character]
+	if sources and sources[sourceName] then
+		sources[sourceName] = nil
+		StatsModule.ResetSpeedMultiplier(character)
+		return true
+	end
+	return false
+end
+
+-- Quita todas las ralentizaciones activas (fuentes con multiplicador < 1)
+function StatsModule.ClearSlows(character)
+	local sources = speedSources[character]
+	if not sources then return end
+	for name, source in pairs(sources) do
+		if source.multiplier < 1 then
+			sources[name] = nil
+		end
+	end
+	StatsModule.ResetSpeedMultiplier(character)
 end
 
 function StatsModule.AddAbsorption(character, amount)

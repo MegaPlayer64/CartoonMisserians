@@ -16,17 +16,39 @@
 - Registra cada mapa en `MatchConfig.AvailableMaps` con `Category` (`"Pequeño"`, `"Mediano"`, `"Grande"`) y `RecommendedKillers = { "Shedmov", "Stan.oma.png" }` (nombres canónicos de `CharacterDatabase`).
 - Para que salgan 3 opciones (una por tamaño) hace falta al menos un mapa de cada tamaño; si falta uno, `MapSelection` rellena con otros.
 
-## Pendiente: necesito que lo confirmes
-### 1. Tiempo de salida según las tareas
-Hoy la salida **se abre al completar las 6 tareas y dura 70 s fijos**; si se agotan los 300 s antes, gana el Devilish. "Cada tarea purificada reduce el temporizador global (de 0:50 a 1:10 si se completan todas)" admite varias lecturas:
-- **A.** Hay un temporizador de cierre global que arranca desde el principio y **cada tarea lo acorta**; al completarlas todas la salida se abre y quedan entre 0:50 y 1:10.
-- **B.** La salida se abre al completar las tareas, pero **su duración abierta** va de 0:50 (pocas tareas / más salidas) a 1:10 (todas).
-- **C.** Otra (dime cuál).
-Necesito: ¿qué mide exactamente el 0:50–1:10 y en qué sentido va (más tareas = más o menos tiempo)? ¿Depende del número de salidas?
+## Temporizador de salida (confirmado: lectura A)
+Partida de ~5 min. Valores en `MatchConfig.ExitTiming` / `LMSDuration`; lógica en `MatchManager` (`computeExitOpenAt`, `computeExitDuration`, `openExit`, `shortenExit`, `applyLMSTimer`).
 
-### 2. Calificación y "Maldad"
-La lista que mencionaste (SUPER F, B, A, SS+) parece incompleta. Necesito: **la escala completa** de notas, **qué mide cada nota** (¿tareas, supervivencia, escape, daño, eliminaciones? ¿distinto para Killer y Toonflows?), **cuánta Maldad da cada nota**, y **quién la gana** (¿solo el Killer o todos?). Hay métricas que hoy no se registran (daño, eliminaciones): habría que añadirlas.
-También: ¿cuánta Maldad cuesta jugar/seleccionar un Killer, y desde dónde se gasta (pantalla de selección)?
+| | Sin tareas | Con todas las tareas |
+|---|---|---|
+| **Se abre en el segundo…** | 240 (último minuto) | 120 (hasta 2:00 antes); cada tarea adelanta 20 s |
+| **Dura abierta** | 0:50 | 1:10 |
 
-### 3. LMS: temporizador de cierre
-"Forzar entre 1:10 y 1:50 máximo": propongo **`restante = clamp(restante, 70, 110)`** (si quedan más de 1:50 se baja a 1:50; si quedan menos de 1:10 se sube a 1:10). ¿Es esa la intención, o solo hay que *recortar* a 1:50 sin alargar? ¿Y qué temporizador es: el global de 5:00 o el de la salida abierta?
+- La salida **se abre sola** cuando llega su hora: completar tareas ya no la abre al instante, solo la adelanta (si ya pasó la hora, se abre enseguida). Esto sustituye a la decisión anterior de "tiempo agotado sin tareas = gana el Devilish": ahora siempre hay salida en el último minuto.
+- El reloj del HUD cuenta hasta la apertura y se actualiza al momento con cada tarea.
+- **LMS** (queda un Toonflow en pie): la partida se acorta según el arquetipo del último superviviente: **Sentinel 1:50** (Trunks, Toby), **Survivalist 1:30** (Brothercat), **Support 1:10** (Deerphina, Takorita). Si la salida aún no se abrió, se abre dejando al menos 0:50 de ventana antes del final; si ya está abierta, se acorta a ese tiempo. Solo acorta, nunca alarga.
+- Los arquetipos están en `CharacterDatabase` (`Archetype`). **Brothercat = Survivalist es mi suposición.**
+
+## Calificación y Maldad (infraestructura lista, DESACTIVADA)
+`MatchScoring.Enabled = false`: mientras esté apagada no se calcula nada, no se reparte Maldad y el panel de resultado no aparece. Los pesos y umbrales de `MatchScoring.luau` son una **propuesta** para probar:
+
+| Métrica (de la dirección) | Estado | Puntos propuestos |
+|---|---|---|
+| Stuns dados | recogida (solo habilidades que pasan `params.Player`: hoy Deerphina) | 8 c/u |
+| Supervivientes curados (distintos) | recogida (hoy Deerphina) | 10 c/u |
+| Escapes de persecución | **pendiente** (falta un detector de persecuciones) | 15 c/u |
+| Supervivientes salvados de una persecución | **pendiente** | 20 c/u |
+| Habilidades usadas (solo Survivalist) | recogida (todas las habilidades) | 2 c/u |
+| Escapar | recogida | +40 |
+| Caer / morir | recogida | +15 (consuelo) |
+| *Mi propuesta:* tareas purificadas | recogida | 5 c/u |
+| *Mi propuesta:* victoria del equipo | recogida | +20 |
+| **Killer:** derribos / eliminaciones | recogidas | 15 / 30 c/u |
+| **Killer:** habilidades usadas | recogidas | 4 c/u |
+| **Killer:** victoria | recogida | +30 |
+
+Notas: 9 notas de SUPER F a SS+ (SUPER F, F, D, C, B, A, S, SS, SS+) con umbrales 0/10/25/45/70/100/140/190/250 puntos y Maldad 1/3/6/10/15/22/30/40/50. Todo está en `MatchScoring.luau`.
+
+**Pendiente de ampliar:** (a) detector de persecuciones (escapes y rescates) — propuesta: persecución = un Toonflow a ≤ 25 studs del Devilish con línea de visión (el mismo criterio que usa la pasiva de Shed.mov); escape = la persecución termina sin que lo derriben tras ≥ 5 s; rescate = otro Toonflow aturde o interrumpe al Devilish mientras persigue a un aliado. (b) El resto de habilidades (Toby, Takorita, Trunks, Brothercat...) deben pasar `params.Player` a `StatsModule.Stun`/`ApplyHeal` para que sus stuns y curaciones cuenten.
+
+**Falta decidir:** cuánta Maldad cuesta jugar/seleccionar un Killer y desde qué pantalla se gasta.

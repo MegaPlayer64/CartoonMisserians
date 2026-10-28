@@ -237,6 +237,11 @@ local function startAudioLoop()
 
 			local dist = (myHRP.Position - devilishHRP.Position).Magnitude
 
+			-- Radio de terror: un Devilish puede reducirlo (p. ej. la pasiva de Shed.mov lo deja al 50%
+			-- fuera de persecución). Escalar la distancia desplaza TODAS las capas de tensión a la vez.
+			local terrorMultiplier = devilishCharacter:GetAttribute("TerrorRadiusMultiplier") or 1
+			dist = dist / math.max(terrorMultiplier, 0.1)
+
 			-- EVALUACIÓN DE CAPAS DE TENCIÓN Y CHASE PERSONALIZADAS
 			if dist < 25 then
 				local chaseId = getDevilishSoundId(devilishCharacter, "Chase")

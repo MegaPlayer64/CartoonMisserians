@@ -159,7 +159,7 @@ CharacterDatabase.Devilishes = {
 	{
 		Name = "Shedmov",
 		DisplayName = "Shed.mov",
-		Description = "DEVILISH asesino. Velocidad letal y ataques imparables.",
+		Description = "DEVILISH asesino. Sigiloso fuera de persecución e imparable en ella: embiste, grita y entra en berserk.",
 		Color = Color3.fromRGB(57, 216, 110),
 		Stats = {
 			MaxHealth = 1100,

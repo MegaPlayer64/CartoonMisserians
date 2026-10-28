@@ -297,8 +297,18 @@ local function setupPlayerRole(player, role)
 	character:SetAttribute("CookieCharges", nil)
 	character:SetAttribute("LaserModeActive", nil)
 	character:SetAttribute("ActivePuppets", nil)
+	-- Shed.mov: efectos y estados que no deben heredarse entre partidas
+	for _, attribute in ipairs({ "StunImmune", "SlowImmune", "AttackSpeedMultiplier", "BerserkActive",
+		"TerrorRadiusMultiplier", "ShedChasing", "Bleeding", "Revealed" }) do
+		character:SetAttribute(attribute, nil)
+	end
 
 	-- Pasiva de Stan ("Corrupción Inminente"): antes StartPassiveTrail no se llamaba desde ningún sitio
+	-- Pasiva de Shed.mov ("Mantente fuera"): radio de terror reducido fuera de persecución y bono en ella
+	if characterName == "Shedmov" and role == StatsModule.Role.Devilish then
+		require(game:GetService("ServerScriptService").ServerModules.ShedMovAbilities).StartPassive(character)
+	end
+
 	if characterName == "Stan.oma.png" and role == StatsModule.Role.Devilish then
 		require(game:GetService("ServerScriptService").ServerModules.StanAbilities).StartPassiveTrail(character)
 	end

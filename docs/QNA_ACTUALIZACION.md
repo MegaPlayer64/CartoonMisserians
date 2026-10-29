@@ -52,3 +52,11 @@ Notas: 9 notas de SUPER F a SS+ (SUPER F, F, D, C, B, A, S, SS, SS+) con umbrale
 **Pendiente de ampliar:** (a) detector de persecuciones (escapes y rescates) — propuesta: persecución = un Toonflow a ≤ 25 studs del Devilish con línea de visión (el mismo criterio que usa la pasiva de Shed.mov); escape = la persecución termina sin que lo derriben tras ≥ 5 s; rescate = otro Toonflow aturde o interrumpe al Devilish mientras persigue a un aliado. (b) El resto de habilidades (Toby, Takorita, Trunks, Brothercat...) deben pasar `params.Player` a `StatsModule.Stun`/`ApplyHeal` para que sus stuns y curaciones cuenten.
 
 **Falta decidir:** cuánta Maldad cuesta jugar/seleccionar un Killer y desde qué pantalla se gasta.
+
+## Quién es el Killer: Maldad y opción para desactivarlo (confirmado)
+- **Regla:** el jugador con **más Maldad** entre quienes pueden ser Killer es el candidato; los empates se sortean. Al empezar su partida como Killer su Maldad **se gasta y vuelve a 0**, para que el puesto rote (su calificación de esa partida volverá a subirla).
+- **Opción "Poder ser Killer"** (`KillerOptIn`, guardada en `PlayerData`): si se desactiva, el jugador nunca es candidato. **Única excepción:** si *nadie* quiere ser Killer se elige entre todos, para que la partida pueda empezar.
+- Código: `KillerSelection` (servidor), `PlayerData.setKillerOptIn / resetMaldad`, `KillerOptionsServer` (remote `SetKillerOptIn`), y `KillerOptionClient` (panel provisional con engranaje, muestra tu Maldad y el candidato actual).
+- El reinicio de Maldad ocurre al **empezar** la partida, no al asignar el rol: si la partida se cancela antes, no se cobra.
+- **Para tu UI de Opciones:** lee el atributo `KillerOptIn` del jugador (nil o `true` = puede ser Killer) y cambia con `Remotes.SetKillerOptIn:FireServer(true | false)`.
+- **Ojo:** el botón "Options" que ya existe en el lobby abre hoy el **menú de depuración** (hitboxes). Conviene limitarlo a desarrolladores o reutilizarlo para unas opciones de verdad.

@@ -27,6 +27,7 @@ local CartoonsitosManager = require(ServerScriptService:WaitForChild("Cartoonsit
 local MatchStats = require(ServerScriptService.ServerModules.MatchStats)
 local MatchScoring = require(ServerScriptService.ServerModules.MatchScoring)
 local PlayerData = require(ServerScriptService.ServerModules.PlayerData)
+local KillerSelection = require(ServerScriptService.ServerModules.KillerSelection)
 
 local Remotes = ReplicatedStorage.Framework.Remotes
 local MatchStateRemote = Remotes:WaitForChild("MatchState")
@@ -51,6 +52,7 @@ local exitThread = nil
 local escapedToonflows = {}  -- [Player] = true
 local tasksCompleted = 0
 local lmsPlayer = nil  -- [Player] ultimo sobreviviente Toonflow
+local selectedKiller = nil -- Player elegido Killer de esta partida (su Maldad se gasta al empezar)
 local matchElapsed = 0 -- segundos desde que empezó la partida (lo actualiza el bucle de runInProgress)
 local totalTaskCount = 0 -- tareas del mapa (lo informa TaskManager)
 local exitHasOpened = false -- la salida se abre una sola vez por partida
@@ -220,6 +222,7 @@ local function assignRoles()
 	local playerCount = #allPlayers
 
 	assignedRoles = {}
+	selectedKiller = nil
 
 	local minReq = RunService:IsStudio() and 1 or MatchConfig.MinPlayers
 	if playerCount < minReq then
@@ -243,9 +246,11 @@ local function assignRoles()
 			end
 		end
 	else
-		local devilishIndex = math.random(1, playerCount)
-		for i, player in ipairs(allPlayers) do
-			if i == devilishIndex then
+		-- Killer = el jugador con MÁS Maldad entre quienes no desactivaron "poder ser Killer"
+		-- (empates al azar). Antes era un sorteo uniforme entre todos.
+		selectedKiller = KillerSelection.pick(allPlayers)
+		for _, player in ipairs(allPlayers) do
+			if player == selectedKiller then
 				assignedRoles[player] = StatsModule.Role.Devilish
 			else
 				assignedRoles[player] = StatsModule.Role.Toonflow
@@ -787,6 +792,12 @@ local function runInProgress()
 	matchElapsed = 0
 	exitHasOpened = false
 	MatchStats.reset()
+
+	-- Al EMPEZAR la partida (no al asignar el rol) se gasta la Maldad del Killer: vuelve a 0 y el puesto
+	-- rota. Así no se cobra si la partida se cancela antes. (Su calificación de hoy la volverá a subir.)
+	if selectedKiller and selectedKiller.Parent then
+		PlayerData.resetMaldad(selectedKiller)
+	end
 	lmsDeadline = nil
 	lmsOpenAt = nil
 

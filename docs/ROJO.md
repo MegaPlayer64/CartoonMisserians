@@ -33,5 +33,6 @@ poner scripts dentro.
 ## Nota: GUI "Scripts" (PopUpHUD duplicado)
 `StarterGui/Scripts/PopUpHUD` era una copia antigua (44 líneas) del mismo `PopUpHUD` que está en
 `StarterPlayerScripts` (310 líneas). Ambos escuchaban `TriggerPopups`, así que cada ataque de Stan
-mostraba ventanas dobles. Se eliminó la copia antigua del repo; borra también el ScreenGui
-`Scripts` de tu place si solo contiene ese script.
+mostraba ventanas dobles. Se eliminó la copia antigua del repo; borra también la carpeta
+`Scripts` de StarterGui de tu place (es un **Folder**, no un ScreenGui; en tu place sigue existiendo y
+duplica `PopUpHUD`, que ya está en `StarterPlayerScripts`).

@@ -24,6 +24,24 @@ local MapVoteResponseRemote = Remotes:WaitForChild("MapVoteResponse")
 
 local MapSelection = {}
 
+-- Solo los mapas de MatchConfig.AvailableMaps que EXISTEN en Workspace.Maps. Antes se ofrecían también los
+-- configurados pero ausentes del place (p. ej. "GameMap_Example"): si el Devilish elegía uno, la partida
+-- se cancelaba al no encontrar el mapa.
+local warnedMissing = {}
+local function getExistingMaps()
+	local mapsFolder = workspace:FindFirstChild("Maps")
+	local existing = {}
+	for _, map in ipairs(MatchConfig.AvailableMaps) do
+		if mapsFolder and mapsFolder:FindFirstChild(map.Name) then
+			table.insert(existing, map)
+		elseif not warnedMissing[map.Name] then
+			warnedMissing[map.Name] = true
+			warn("[MapSelection] El mapa '" .. map.Name .. "' está en MatchConfig.AvailableMaps pero no existe en Workspace.Maps: se ignora")
+		end
+	end
+	return existing
+end
+
 -- Lo que ve el Devilish de cada mapa (copia: no se expone la tabla de configuración tal cual)
 local function toOption(map)
 	return {
@@ -44,11 +62,12 @@ function MapSelection.GetVoteOptions(count)
 	count = count or 3
 	local options = {}
 	local used = {}
+	local availableMaps = getExistingMaps()
 
 	-- Un mapa por categoria
 	for _, category in ipairs({ MatchConfig.MapCategories.Pequeno, MatchConfig.MapCategories.Mediano, MatchConfig.MapCategories.Grande }) do
 		local categoryMaps = {}
-		for _, map in ipairs(MatchConfig.AvailableMaps) do
+		for _, map in ipairs(availableMaps) do
 			if map.Category == category then
 				table.insert(categoryMaps, map)
 			end
@@ -64,7 +83,7 @@ function MapSelection.GetVoteOptions(count)
 
 	-- Rellenar con mapas restantes si faltan opciones
 	local remaining = {}
-	for _, map in ipairs(MatchConfig.AvailableMaps) do
+	for _, map in ipairs(availableMaps) do
 		if not used[map.Name] then
 			table.insert(remaining, map)
 		end
@@ -82,7 +101,7 @@ end
 	Selecciona un mapa aleatorio de la lista disponible.
 ]]
 function MapSelection.PickRandomMap()
-	local maps = MatchConfig.AvailableMaps
+	local maps = getExistingMaps()
 	if #maps == 0 then return nil end
 	return maps[math.random(1, #maps)].Name
 end

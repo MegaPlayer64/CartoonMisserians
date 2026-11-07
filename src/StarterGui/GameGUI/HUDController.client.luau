@@ -555,6 +555,35 @@ AbilitySyncRemote.OnClientEvent:Connect(function(abilityName, info)
 end)
 
 -- Listener para Avance de Tareas
+-- Last Man Standing: muestra el LMSBanner que ya existe en GameGUI (antes se declaraba pero nada lo mostraba).
+-- Los textos son los que tengas en el propio banner; aquí solo se enseña y se oculta.
+local LMS_BANNER_SECONDS = 4
+if lmsBanner then
+	lmsBanner.Visible = false
+
+	local lmsToken = 0
+	if LMSActivatedRemote then
+		LMSActivatedRemote.OnClientEvent:Connect(function()
+			lmsToken += 1
+			local myToken = lmsToken
+			lmsBanner.Visible = true
+			task.delay(LMS_BANNER_SECONDS, function()
+				if myToken == lmsToken then
+					lmsBanner.Visible = false
+				end
+			end)
+		end)
+	end
+
+	-- Al cambiar de fase (otra partida, lobby, fin) el banner se oculta
+	MatchStateRemote.OnClientEvent:Connect(function(state)
+		if state == "Intermission" or state == "RoleAssigned" or state == "Ending" then
+			lmsToken += 1
+			lmsBanner.Visible = false
+		end
+	end)
+end
+
 if TaskProgressRemote then
 	TaskProgressRemote.OnClientEvent:Connect(function(data)
 		if data and data.completed and data.total then

@@ -24,12 +24,17 @@ local MapSelection = require(game:GetService("ServerScriptService").ServerModule
 local TaskManager = require(game:GetService("ServerScriptService").ServerModules.TaskManager)
 local BotController = require(ServerScriptService.BotController)
 local CartoonsitosManager = require(ServerScriptService:WaitForChild("CartoonsitosManager"))
+local MatchStats = require(ServerScriptService.ServerModules.MatchStats)
+local MatchScoring = require(ServerScriptService.ServerModules.MatchScoring)
+local PlayerData = require(ServerScriptService.ServerModules.PlayerData)
+local KillerSelection = require(ServerScriptService.ServerModules.KillerSelection)
 
 local Remotes = ReplicatedStorage.Framework.Remotes
 local MatchStateRemote = Remotes:WaitForChild("MatchState")
 local MapChosenRemote = Remotes:WaitForChild("MapChosen")
 local LMSActivatedRemote = Remotes:WaitForChild("LMSActivated")
 local ExitTimerRemote = Remotes:WaitForChild("ExitTimer")
+local MatchResultRemote = Remotes:WaitForChild("MatchResult")
 local TaskProgressRemote = Remotes:WaitForChild("TaskProgress", 10) or Remotes:FindFirstChild("TaskProgress")
 
 local MatchManager = {}
@@ -47,10 +52,66 @@ local exitThread = nil
 local escapedToonflows = {}  -- [Player] = true
 local tasksCompleted = 0
 local lmsPlayer = nil  -- [Player] ultimo sobreviviente Toonflow
-local exitTriggerConnection = nil
+local selectedKiller = nil -- Player elegido Killer de esta partida (su Maldad se gasta al empezar)
+local matchElapsed = 0 -- segundos desde que empezó la partida (lo actualiza el bucle de runInProgress)
+local totalTaskCount = 0 -- tareas del mapa (lo informa TaskManager)
+local exitHasOpened = false -- la salida se abre una sola vez por partida
+local exitDeadline = 0 -- os.clock() en el que se cierra la salida abierta
+local lmsDeadline = nil -- LMS: segundo (matchElapsed) en el que termina la partida
+local lmsOpenAt = nil -- LMS: segundo como muy tarde en el que se abre la salida
+local shortenExit -- se define junto a openExit
+local applyLMSTimer -- se define junto a openExit
+local exitTriggerConnections = {}
+local activeExits = {} -- Models de salida activos en ESTA partida (según el tamaño del mapa)
 
-local function getExitModel()
-	return currentMap and (currentMap:FindFirstChild("Exit") or currentMap:FindFirstChild("ExitDoor"))
+-- Salidas del mapa: una carpeta "Exits" con un Model por salida; si no existe, la salida única
+-- heredada ("Exit" o "ExitDoor").
+local function getExitModels()
+	local models = {}
+	if not currentMap then return models end
+
+	local folder = currentMap:FindFirstChild("Exits")
+	if folder then
+		for _, child in ipairs(folder:GetChildren()) do
+			if child:IsA("Model") or child:IsA("BasePart") then
+				table.insert(models, child)
+			end
+		end
+	else
+		local single = currentMap:FindFirstChild("Exit") or currentMap:FindFirstChild("ExitDoor")
+		if single then
+			table.insert(models, single)
+		end
+	end
+	return models
+end
+
+local function getMapCategory()
+	if not currentMap then return nil end
+	for _, map in ipairs(MatchConfig.AvailableMaps) do
+		if map.Name == currentMap.Name then
+			return map.Category
+		end
+	end
+	return nil
+end
+
+-- QNA: Chico 1 salida, Mediano 2, Grande 3. Si el mapa tiene más Models de salida de los que
+-- le tocan, se eligen al azar; si tiene menos, se usan todos.
+local function selectActiveExits()
+	local models = getExitModels()
+	local allowed = MatchConfig.ExitsByCategory[getMapCategory()] or 1
+
+	for i = #models, 2, -1 do
+		local j = math.random(i)
+		models[i], models[j] = models[j], models[i]
+	end
+
+	local active = {}
+	for i = 1, math.min(allowed, #models) do
+		active[i] = models[i]
+	end
+	return active
 end
 
 -- Abre (sin colisión, semitransparente) o cierra visualmente la puerta de salida.
@@ -61,6 +122,12 @@ local function setExitVisuals(exitModel, open)
 			part.CanCollide = not open
 			part.Transparency = open and 0.5 or 0
 		end
+	end
+end
+
+local function setAllExitVisuals(open)
+	for _, exitModel in ipairs(activeExits) do
+		setExitVisuals(exitModel, open)
 	end
 end
 
@@ -155,6 +222,7 @@ local function assignRoles()
 	local playerCount = #allPlayers
 
 	assignedRoles = {}
+	selectedKiller = nil
 
 	local minReq = RunService:IsStudio() and 1 or MatchConfig.MinPlayers
 	if playerCount < minReq then
@@ -178,9 +246,11 @@ local function assignRoles()
 			end
 		end
 	else
-		local devilishIndex = math.random(1, playerCount)
-		for i, player in ipairs(allPlayers) do
-			if i == devilishIndex then
+		-- Killer = el jugador con MÁS Maldad entre quienes no desactivaron "poder ser Killer"
+		-- (empates al azar). Antes era un sorteo uniforme entre todos.
+		selectedKiller = KillerSelection.pick(allPlayers)
+		for _, player in ipairs(allPlayers) do
+			if player == selectedKiller then
 				assignedRoles[player] = StatsModule.Role.Devilish
 			else
 				assignedRoles[player] = StatsModule.Role.Toonflow
@@ -246,7 +316,7 @@ local function setupPlayerRole(player, role)
 	character:SetAttribute("ActivePuppets", nil)
 	-- Shed.mov: efectos y estados que no deben heredarse entre partidas
 	for _, attribute in ipairs({ "StunImmune", "SlowImmune", "AttackSpeedMultiplier", "BerserkActive",
-		"TerrorRadiusMultiplier", "ShedChasing", "Bleeding", "Revealed" }) do
+		"TerrorRadiusMultiplier", "ShedChasing", "Bleeding", "Revealed", "DeathRecorded" }) do
 		character:SetAttribute(attribute, nil)
 	end
 
@@ -388,15 +458,16 @@ local function cleanupMatch()
 		exitThread = nil
 	end
 	if exitOpen then
-		setExitVisuals(getExitModel(), false)
+		setAllExitVisuals(false)
 		ExitTimerRemote:FireAllClients({ remaining = 0, open = false })
 	end
 	exitOpen = false
 	exitClosed = false
-	if exitTriggerConnection then
-		exitTriggerConnection:Disconnect()
-		exitTriggerConnection = nil
+	for _, connection in ipairs(exitTriggerConnections) do
+		connection:Disconnect()
 	end
+	table.clear(exitTriggerConnections)
+	activeExits = {}
 	for player, _ in pairs(assignedRoles) do
 		if typeof(player) == "Instance" and player:IsA("Player") then
 			AbilityFramework.ClearPlayer(player)
@@ -443,28 +514,59 @@ local function activateLMS()
 		StatsModule.RestoreHealth(character)
 	end
 
+	-- QNA: la partida se acorta (más tiempo si el último es Centinela, menos si es de Soporte)
+	local lmsSeconds = applyLMSTimer and applyLMSTimer(character) or nil
+
 	local nameStr = (typeof(lastToonflow) == "Instance") and lastToonflow.Name or "Toonflow"
-	LMSActivatedRemote:FireAllClients({ player = nameStr })
+	LMSActivatedRemote:FireAllClients({ player = nameStr, timer = lmsSeconds })
 	print("[MatchManager] LMS activado para " .. nameStr)
+end
+
+-- == TEMPORIZADOR DE SALIDA (QNA) ==
+local function taskProgress()
+	if totalTaskCount <= 0 then return 0 end
+	return math.clamp(tasksCompleted / totalTaskCount, 0, 1)
+end
+
+-- Segundo de la partida en el que se abre la salida: sin tareas, en el último minuto; cada tarea
+-- purificada lo adelanta (hasta 2:00 con todas). Con LMS no puede pasar de lmsOpenAt.
+local function computeExitOpenAt()
+	local timing = MatchConfig.ExitTiming
+	local openAt = timing.BaseOpenAt - timing.MaxTaskReduction * taskProgress()
+	if lmsOpenAt then
+		openAt = math.min(openAt, lmsOpenAt)
+	end
+	return math.max(0, openAt)
+end
+
+-- Cuánto dura la salida abierta: de 0:50 (sin tareas) a 1:10 (todas); en LMS, nunca más allá del final
+local function computeExitDuration()
+	local timing = MatchConfig.ExitTiming
+	local duration = timing.WindowNoTasks + (timing.WindowAllTasks - timing.WindowNoTasks) * taskProgress()
+	if lmsDeadline then
+		duration = math.min(duration, math.max(5, lmsDeadline - matchElapsed))
+	end
+	return math.floor(duration)
 end
 
 local function openExit(duration)
 	if exitOpen then return end
 	exitOpen = true
 	exitClosed = false
+	exitDeadline = os.clock() + duration
 
-	local exitModel = getExitModel()
-	setExitVisuals(exitModel, true)
+	setAllExitVisuals(true)
 
 	ExitTimerRemote:FireAllClients({ remaining = duration, open = true })
 
 	if exitThread then task.cancel(exitThread) end
 	exitThread = task.spawn(function()
-		local remaining = duration
-		while remaining > 0 do
+		-- El cierre se calcula contra exitDeadline (y no con una cuenta atrás local) para poder
+		-- acortarlo con shortenExit cuando se activa el LMS
+		while exitDeadline - os.clock() > 0 do
 			task.wait(1)
-			remaining = remaining - 1
-			if remaining % 5 == 0 then
+			local remaining = math.max(0, math.ceil(exitDeadline - os.clock()))
+			if remaining > 0 and remaining % 5 == 0 then
 				ExitTimerRemote:FireAllClients({ remaining = remaining, open = true })
 			end
 		end
@@ -472,10 +574,37 @@ local function openExit(duration)
 		exitOpen = false
 		exitClosed = true
 
-		setExitVisuals(exitModel, false)
+		setAllExitVisuals(false)
 
 		ExitTimerRemote:FireAllClients({ remaining = 0, open = false })
 	end)
+end
+
+-- Acorta la salida YA abierta para que no dure más de `maxRemaining` segundos (nunca la alarga)
+function shortenExit(maxRemaining)
+	if not exitOpen then return end
+	local newDeadline = os.clock() + maxRemaining
+	if newDeadline < exitDeadline then
+		exitDeadline = newDeadline
+		ExitTimerRemote:FireAllClients({ remaining = maxRemaining, open = true })
+	end
+end
+
+-- LMS: fija el final de la partida según el arquetipo del último Toonflow y devuelve los segundos
+function applyLMSTimer(character)
+	local name = character and character:GetAttribute("CharacterName")
+	local data = name and CharacterDatabase.GetToonflow(name)
+	local archetype = data and data.Archetype or "Survivalist"
+	local seconds = MatchConfig.LMSDuration[archetype] or MatchConfig.LMSDuration.Survivalist
+
+	lmsDeadline = matchElapsed + seconds
+	if exitOpen then
+		shortenExit(seconds)
+	elseif not exitHasOpened then
+		-- La salida se abre dejando al menos LMSMinOpenWindow segundos de ventana antes del final
+		lmsOpenAt = matchElapsed + math.max(0, seconds - MatchConfig.LMSMinOpenWindow)
+	end
+	return seconds
 end
 
 -- Zona segura de quienes escapan: "EscapeSpawn" (BasePart) dentro del mapa si existe;
@@ -490,44 +619,49 @@ local function getSafeZoneSpawn()
 	return lobby and lobby:FindFirstChild("LobbySpawn")
 end
 
-local function setupExitTrigger()
-	local exitModel = currentMap and (currentMap:FindFirstChild("Exit") or currentMap:FindFirstChild("ExitDoor"))
-	if not exitModel then return end
+local function onExitTouched(otherPart)
+	if not exitOpen then return end
 
-	local trigger = exitModel:FindFirstChild("Trigger") or exitModel:FindFirstChild("ExitSpawn") or exitModel
-	if not trigger or not trigger:IsA("BasePart") then return end
+	-- Model ancestro (no Parent): un accesorio o una parte anidada también cuenta
+	local character = otherPart:FindFirstAncestorOfClass("Model")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return end
 
-	if exitTriggerConnection then
-		exitTriggerConnection:Disconnect()
-	end
-	exitTriggerConnection = trigger.Touched:Connect(function(otherPart)
-		if not exitOpen then return end
+	local player = Players:GetPlayerFromCharacter(character)
+	if not player then return end
+	if assignedRoles[player] ~= StatsModule.Role.Toonflow then return end
+	if escapedToonflows[player] then return end
 
-		local character = otherPart.Parent
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if not humanoid or humanoid.Health <= 0 then return end
+	local stats = StatsModule.GetStats(character)
+	local isAlive = stats and stats:FindFirstChild("IsAlive") and stats.IsAlive.Value
+	local isDowned = character:GetAttribute("IsDowned") or false
 
-		local player = Players:GetPlayerFromCharacter(character)
-		if not player then return end
-		if assignedRoles[player] ~= StatsModule.Role.Toonflow then return end
-		if escapedToonflows[player] then return end
-
-		local stats = StatsModule.GetStats(character)
-		local isAlive = stats and stats:FindFirstChild("IsAlive") and stats.IsAlive.Value
-		local isDowned = character:GetAttribute("IsDowned") or false
-
-		if isAlive and not isDowned then
-			escapedToonflows[player] = true
-			-- Invulnerable (StatsModule.ApplyDamage lo respeta) y fuera del alcance del
-			-- Devilish: antes seguía en el mapa y podía ser golpeado después de escapar.
-			character:SetAttribute("Escaped", true)
-			local safeSpawn = getSafeZoneSpawn()
-			if safeSpawn then
-				teleportPlayer(player, safeSpawn)
-			end
-			print("[MatchManager] " .. player.Name .. " escapó exitosamente por la salida!")
+	if isAlive and not isDowned then
+		escapedToonflows[player] = true
+		-- Invulnerable (StatsModule.ApplyDamage lo respeta) y fuera del alcance del
+		-- Devilish: antes seguía en el mapa y podía ser golpeado después de escapar.
+		character:SetAttribute("Escaped", true)
+		local safeSpawn = getSafeZoneSpawn()
+		if safeSpawn then
+			teleportPlayer(player, safeSpawn)
 		end
-	end)
+		print("[MatchManager] " .. player.Name .. " escapó exitosamente por la salida!")
+	end
+end
+
+-- Un Touched por cada salida activa (cualquiera sirve para escapar)
+local function setupExitTrigger()
+	for _, connection in ipairs(exitTriggerConnections) do
+		connection:Disconnect()
+	end
+	table.clear(exitTriggerConnections)
+
+	for _, exitModel in ipairs(activeExits) do
+		local trigger = exitModel:FindFirstChild("Trigger") or exitModel:FindFirstChild("ExitSpawn") or exitModel
+		if trigger and trigger:IsA("BasePart") then
+			table.insert(exitTriggerConnections, trigger.Touched:Connect(onExitTouched))
+		end
+	end
 end
 
 -- == ESTADOS DE PARTIDA ==
@@ -654,11 +788,24 @@ local function runInProgress()
 	exitOpen = false
 	exitClosed = false
 	tasksCompleted = 0
+	totalTaskCount = 0
+	matchElapsed = 0
+	exitHasOpened = false
+	MatchStats.reset()
 
+	-- Al EMPEZAR la partida (no al asignar el rol) se gasta la Maldad del Killer: vuelve a 0 y el puesto
+	-- rota. Así no se cobra si la partida se cancela antes. (Su calificación de hoy la volverá a subir.)
+	if selectedKiller and selectedKiller.Parent then
+		PlayerData.resetMaldad(selectedKiller)
+	end
+	lmsDeadline = nil
+	lmsOpenAt = nil
+
+	activeExits = selectActiveExits()
 	setupExitTrigger()
 
 	broadcastMatchState(currentMatchState, {
-		timer = MatchConfig.MaxMatchDuration,
+		timer = computeExitOpenAt(), -- segundos hasta que se abre la salida (se acorta con las tareas)
 		message = "¡La partida ha comenzado!",
 		aliveToons = aliveToons,
 	})
@@ -667,12 +814,21 @@ local function runInProgress()
 		TaskManager.Start(currentMap, {
 			onTaskCompleted = function(completed, total, player)
 				tasksCompleted = completed
+				totalTaskCount = total
 				if player then
 					CartoonsitosManager.RewardTaskRepaired(player)
+					MatchStats.add(player, "tasksCompleted", 1)
 				end
 				-- NOTIFICAR A LA GUI DEL CLIENTE
 				if TaskProgressRemote then
 					TaskProgressRemote:FireAllClients({ completed = completed, total = total })
+				end
+				-- Cada tarea adelanta la apertura de la salida: actualizar al momento el reloj de los clientes
+				if not exitOpen then
+					broadcastMatchState(currentMatchState, {
+						timer = math.max(0, computeExitOpenAt() - matchElapsed),
+						aliveToons = aliveToons,
+					})
 				end
 			end,
 			onAllCompleted = function(completed, total)
@@ -680,9 +836,7 @@ local function runInProgress()
 				if TaskProgressRemote then
 					TaskProgressRemote:FireAllClients({ completed = completed, total = total })
 				end
-				if not exitOpen then
-					openExit(MatchConfig.ExitOpenDuration)
-				end
+				-- La salida ya no se abre al completar las tareas: la abre el reloj (computeExitOpenAt)
 			end,
 		})
 	end
@@ -692,6 +846,7 @@ local function runInProgress()
 	while true do
 		task.wait(1)
 		elapsed = elapsed + 1
+		matchElapsed = elapsed
 
 		local aliveInMapCount = 0
 		local escapedCount = 0
@@ -730,6 +885,12 @@ local function runInProgress()
 		-- LMS: Queda solo 1 Toonflow
 		if aliveInMapCount == 1 and escapedCount == 0 and not lmsActivated then
 			activateLMS()
+		end
+
+		-- La salida se abre sola cuando llega su hora (más temprano cuantas más tareas se hayan purificado)
+		if not exitOpen and not exitHasOpened and elapsed >= computeExitOpenAt() then
+			exitHasOpened = true
+			openExit(computeExitDuration())
 		end
 
 		-- CONDICIÓN 1: Ya no quedan Toonflows en el mapa
@@ -771,8 +932,9 @@ local function runInProgress()
 			return "DevilishWins"
 		end
 
-		-- CONDICIÓN 4: Tiempo máximo de ronda alcanzado sin completar tareas
-		if elapsed >= MatchConfig.MaxMatchDuration and not exitOpen then
+		-- CONDICIÓN 4 (red de seguridad): la salida se abre siempre en el último minuto, así que solo
+		-- se llega aquí si algo impidió abrirla
+		if elapsed >= MatchConfig.MaxMatchDuration and not exitHasOpened then
 			broadcastMatchState(currentMatchState, {
 				timer = 0,
 				message = "¡Tiempo agotado sin reparar las tareas! El Devilish gana.",
@@ -783,9 +945,57 @@ local function runInProgress()
 
 		if elapsed % 5 == 0 then
 			broadcastMatchState(currentMatchState, {
-				timer = math.max(0, MatchConfig.MaxMatchDuration - elapsed),
+				timer = math.max(0, computeExitOpenAt() - elapsed),
 				aliveToons = aliveToons,
 			})
+		end
+	end
+end
+
+-- Calificación de fin de partida y Maldad (MatchScoring). Apagada hasta que se aprueben los pesos
+-- (MatchScoring.Enabled). Cada jugador se evalúa aparte y con pcall: un fallo no debe impedir el cierre.
+local function evaluateScores(winner)
+	if not MatchScoring.Enabled then return end
+
+	local devilishEvents = MatchStats.getDevilishEvents()
+
+	for player, role in pairs(assignedRoles) do
+		if typeof(player) == "Instance" and player:IsA("Player") then
+			local ok, err = pcall(function()
+				local isKiller = role == StatsModule.Role.Devilish
+				local counters = MatchStats.get(player)
+				if isKiller then
+					-- Derribos y bajas se acreditan al Devilish (solo hay uno por partida)
+					counters.downs = devilishEvents.downs
+					counters.kills = devilishEvents.kills
+				end
+
+				local character = player.Character
+				local stats = character and StatsModule.GetStats(character)
+				local aliveValue = stats and stats:FindFirstChild("IsAlive")
+				local escaped = escapedToonflows[player] == true
+				local died = (not isKiller) and (not escaped) and not (aliveValue and aliveValue.Value)
+
+				local archetype = nil
+				if not isKiller then
+					local name = character and character:GetAttribute("CharacterName")
+					local data = name and CharacterDatabase.GetToonflow(name)
+					archetype = data and data.Archetype
+				end
+
+				local result = MatchScoring.compute(isKiller and "Killer" or "Toonflow", archetype, counters, {
+					escaped = escaped,
+					died = died,
+					won = (winner == "ToonflowsWin") == (not isKiller),
+				})
+
+				PlayerData.addMaldad(player, result.maldad)
+				result.totalMaldad = PlayerData.getMaldad(player)
+				MatchResultRemote:FireClient(player, result)
+			end)
+			if not ok then
+				warn("[MatchManager] Error calificando a " .. player.Name .. ": " .. tostring(err))
+			end
 		end
 	end
 end
@@ -819,6 +1029,8 @@ local function runEnding(winner)
 			end
 		end
 	end
+
+	evaluateScores(winner)
 
 	-- El HUD compara data.winner con "Toonflows"/"Devilish". Antes se enviaba el
 	-- resultado interno ("ToonflowsWin"/"DevilishWins"), así que el cartel final

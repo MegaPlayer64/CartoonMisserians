@@ -6,6 +6,9 @@
 	y sistemas especiales (Fame de Neuro y SCells de Trunks).
 ]]
 
+local MatchStats = require(script.Parent.MatchStats)
+local Players = game:GetService("Players")
+
 local StatsModule = {}
 
 -- Velocidad "de base" que dan ciertas condiciones mientras duran.
@@ -115,7 +118,7 @@ function StatsModule.GetStat(character, statName)
 	return stats:FindFirstChild(statName)
 end
 
-function StatsModule.ApplyDamage(character, damage, ignoreDowned)
+local function applyDamageInternal(character, damage, ignoreDowned)
 	local stats = StatsModule.GetStats(character)
 	if not stats then return false end
 
@@ -193,7 +196,16 @@ function StatsModule.ApplyDamage(character, damage, ignoreDowned)
 	return true, "Damaged"
 end
 
-function StatsModule.ApplyHeal(character, healAmount)
+function StatsModule.ApplyDamage(character, damage, ignoreDowned)
+	local applied, outcome = applyDamageInternal(character, damage, ignoreDowned)
+	-- Estadísticas de partida: derribar a un Toonflow se acredita al Devilish
+	if applied and outcome == "Downed" then
+		MatchStats.addDevilishEvent("downs")
+	end
+	return applied, outcome
+end
+
+function StatsModule.ApplyHeal(character, healAmount, source)
 	local stats = StatsModule.GetStats(character)
 	if not stats then return false end
 
@@ -202,6 +214,14 @@ function StatsModule.ApplyHeal(character, healAmount)
 	local isAlive = stats:FindFirstChild("IsAlive")
 
 	if not (health and maxHealth and isAlive) or not isAlive.Value then return false end
+
+	-- Estadísticas de partida: a cuántos supervivientes DISTINTOS ha curado `source` (opcional, no cuenta a sí mismo)
+	if source then
+		local healedPlayer = Players:GetPlayerFromCharacter(character)
+		if healedPlayer and healedPlayer ~= source and health.Value < maxHealth.Value then
+			MatchStats.addUnique(source, "healed", healedPlayer.UserId)
+		end
+	end
 
 	health.Value = math.min(maxHealth.Value, health.Value + healAmount)
 
@@ -344,6 +364,13 @@ function StatsModule.SetState(character, newState)
 		if isDowned then isDowned.Value = false end
 		character:SetAttribute("IsDowned", false)
 
+		-- Estadísticas de partida: la baja de un Toonflow se acredita UNA vez al Devilish
+		local roleValue = stats:FindFirstChild("Role")
+		if roleValue and roleValue.Value == StatsModule.Role.Toonflow and not character:GetAttribute("DeathRecorded") then
+			character:SetAttribute("DeathRecorded", true)
+			MatchStats.addDevilishEvent("kills")
+		end
+
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		if humanoid then
 			humanoid.Health = 0
@@ -365,7 +392,7 @@ end
 -- original y el personaje se quedaba INMÓVIL PARA SIEMPRE. Aquí el estado Stunned manda (el
 -- multiplicador base lo respeta) y solo el aturdimiento más reciente lo levanta (token StunId).
 -- No pisa Derribado/Muerto ni afecta a quien ya escapó. Devuelve true si aplicó el aturdimiento.
-function StatsModule.Stun(character, duration)
+function StatsModule.Stun(character, duration, source)
 	local stats = StatsModule.GetStats(character)
 	if not stats or character:GetAttribute("Escaped") then return false end
 	if character:GetAttribute("StunImmune") then return false end
@@ -376,6 +403,12 @@ function StatsModule.Stun(character, duration)
 	if not (state and isAlive) or not isAlive.Value then return false end
 	if state.Value == StatsModule.CharacterState.Downed or state.Value == StatsModule.CharacterState.Dead then
 		return false
+	end
+
+	-- Estadísticas de partida: stun dado al Devilish por un jugador (`source`, opcional)
+	local targetRole = stats:FindFirstChild("Role")
+	if source and targetRole and targetRole.Value == StatsModule.Role.Devilish then
+		MatchStats.add(source, "stuns", 1)
 	end
 
 	local stunId = (character:GetAttribute("StunId") or 0) + 1

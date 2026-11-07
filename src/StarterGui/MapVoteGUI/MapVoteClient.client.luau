@@ -13,6 +13,7 @@ local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 
+local CharacterDatabase = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("CharacterDatabase"))
 local Remotes = ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Remotes")
 local MapVoteRequestRemote = Remotes:WaitForChild("MapVoteRequest")
 local MapVoteResponseRemote = Remotes:WaitForChild("MapVoteResponse")
@@ -49,8 +50,37 @@ end
 --[[
 	Muestra la UI con las opciones de mapa recibidas.
 ]]
+-- Nombre legible de un Killer (CharacterDatabase); si no se encuentra, el nombre tal cual
+local function killerDisplayName(name)
+	local data = CharacterDatabase.GetDevilish(name)
+	return data and data.DisplayName or name
+end
+
+-- Texto de cada opción: mapa, tamaño y salidas, y Killers recomendados
+local function describeOption(opt)
+	local lines = { opt.DisplayName or opt.Name }
+
+	local exits = opt.ExitCount or 1
+	table.insert(lines, string.format("%s · %d %s", opt.Category or "?", exits, exits == 1 and "salida" or "salidas"))
+
+	if typeof(opt.RecommendedKillers) == "table" and #opt.RecommendedKillers > 0 then
+		local names = {}
+		for _, killer in ipairs(opt.RecommendedKillers) do
+			table.insert(names, killerDisplayName(killer))
+		end
+		table.insert(lines, "Killers: " .. table.concat(names, ", "))
+	end
+
+	return table.concat(lines, "\n")
+end
+
 local function showVoteUI(options, duration)
 	gui.Enabled = true
+	if not frame:FindFirstChildOfClass("UISizeConstraint") then
+		local limit = Instance.new("UISizeConstraint")
+		limit.MaxSize = Vector2.new(520, 360)
+		limit.Parent = frame
+	end
 	voteActive = true
 
 	-- Configurar botones
@@ -58,7 +88,9 @@ local function showVoteUI(options, duration)
 		local opt = options[i]
 		if opt then
 			btn.Visible = true
-			btn.Text = opt.DisplayName or opt.Name
+			btn.Text = describeOption(opt)
+			btn.TextWrapped = true
+			btn.TextScaled = true
 			-- El servidor valida el voto contra opt.Name: enviar siempre ese valor, no el texto mostrado
 			btn:SetAttribute("MapName", opt.Name)
 			btn.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
@@ -73,7 +105,7 @@ local function showVoteUI(options, duration)
 	frame.Size = UDim2.new(0, 0, 0, 0)
 	TweenService:Create(frame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 		BackgroundTransparency = 0.1,
-		Size = UDim2.new(0, 520, 0, 360),
+		Size = UDim2.new(0.94, 0, 0.9, 0), -- con UISizeConstraint (máx. 520x360): cabe en móviles apaisados
 	}):Play()
 
 	-- Contador regresivo

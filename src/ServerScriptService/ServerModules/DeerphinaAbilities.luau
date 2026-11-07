@@ -150,7 +150,7 @@ AbilityFramework.Register({
 						if rayResult and rayResult.Instance and rayResult.Instance.CanCollide then
 							-- Chocó contra la pared: daño leve y aturdimiento (por StatsModule, no WalkSpeed)
 							if StatsModule.ApplyDamage(hitDevilish, 15) then
-								StatsModule.Stun(hitDevilish, WALL_STUN_SECONDS)
+								StatsModule.Stun(hitDevilish, WALL_STUN_SECONDS, params.Player)
 								VFXModule.SpawnMeleeHitVFX(targetHrp.Position, Color3.fromRGB(255, 200, 50))
 							end
 							break
@@ -191,7 +191,7 @@ AbilityFramework.Register({
 		if target then
 			local targetHrp = target:FindFirstChild("HumanoidRootPart")
 			if StatsModule.ApplyDamage(target, 10) then
-				StatsModule.Stun(target, HORN_STUN_SECONDS)
+				StatsModule.Stun(target, HORN_STUN_SECONDS, params.Player)
 				if targetHrp then
 					VFXModule.SpawnMeleeHitVFX(targetHrp.Position, Color3.fromRGB(255, 200, 50))
 				end
@@ -270,7 +270,7 @@ AbilityFramework.Register({
 			return false, "TargetFullHealth" -- no se regala una galleta que no cura
 		end
 
-		if StatsModule.ApplyHeal(ally, COOKIE_HEAL) then
+		if StatsModule.ApplyHeal(ally, COOKIE_HEAL, params.Player) then
 			character:SetAttribute("CookieCharges", charges - 1)
 			local allyHrp = ally:FindFirstChild("HumanoidRootPart")
 			if allyHrp then

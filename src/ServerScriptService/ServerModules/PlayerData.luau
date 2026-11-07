@@ -34,6 +34,7 @@ local SESSION_LOCK_SECONDS = 180 -- debe ser > AUTOSAVE_SECONDS (el autosave ren
 local AUTOSAVE_SECONDS = 60
 local STARTING_COINS = 100
 local MAX_COINS = 1_000_000_000
+local MAX_MALDAD = 1_000_000_000
 local EMOTE_SLOTS = 6
 local MAX_MASTERY_JSON_BYTES = 200_000 -- tope defensivo; el límite de DataStore es 4 MB por clave
 local IS_STUDIO = RunService:IsStudio()
@@ -43,6 +44,10 @@ local SAVE_ATTEMPTS = 4
 export type Data = {
 	version: number,
 	coins: number,
+	-- "Maldad": segunda moneda (NO son los Cartoonsitos = Coins). Se gana según la calificación de la partida.
+	maldad: number,
+	-- Opciones: false = no quiero que me elijan Killer (nunca es candidato salvo que no quede nadie más)
+	killerOptIn: boolean,
 	ownedEmotes: { string },
 	equippedEmotes: { string },
 	-- JSON de MasteryAndTrophyServer (maestrías, logros, skins). "" = sin datos aún.
@@ -60,6 +65,8 @@ local function defaults(): Data
 	return {
 		version = SCHEMA_VERSION,
 		coins = STARTING_COINS,
+		maldad = 0,
+		killerOptIn = true,
 		ownedEmotes = { "Happy", "Angry", "GG" },
 		equippedEmotes = { "Happy", "Angry", "GG", "", "", "" },
 		masteryData = "",
@@ -99,6 +106,13 @@ local function sanitize(raw: any): Data
 	if type(coins) == "number" and coins == coins then
 		base.coins = math.clamp(math.floor(coins), 0, MAX_COINS)
 	end
+	local maldad = raw.maldad
+	if type(maldad) == "number" and maldad == maldad then
+		base.maldad = math.clamp(math.floor(maldad), 0, MAX_MALDAD)
+	end
+	if type(raw.killerOptIn) == "boolean" then
+		base.killerOptIn = raw.killerOptIn
+	end
 	base.ownedEmotes = sanitizeStringList(raw.ownedEmotes, base.ownedEmotes, nil)
 	base.equippedEmotes = sanitizeStringList(raw.equippedEmotes, base.equippedEmotes, EMOTE_SLOTS)
 	local mastery = raw.masteryData
@@ -133,6 +147,8 @@ end
 local function snapshot(player: Player): Data
 	return sanitize({
 		coins = player:GetAttribute("Coins"),
+		maldad = player:GetAttribute("Maldad"),
+		killerOptIn = player:GetAttribute("KillerOptIn"),
 		ownedEmotes = decodeList(player:GetAttribute("OwnedEmotes")),
 		equippedEmotes = decodeList(player:GetAttribute("EquippedEmotes")),
 		masteryData = player:GetAttribute("MasteryData"),
@@ -141,6 +157,8 @@ end
 
 local function applyToPlayer(player: Player, data: Data)
 	player:SetAttribute("Coins", data.coins)
+	player:SetAttribute("Maldad", data.maldad)
+	player:SetAttribute("KillerOptIn", data.killerOptIn)
 	player:SetAttribute("OwnedEmotes", HttpService:JSONEncode(data.ownedEmotes))
 	player:SetAttribute("EquippedEmotes", HttpService:JSONEncode(data.equippedEmotes))
 	if data.masteryData ~= "" then
@@ -333,6 +351,57 @@ local PlayerData = {}
 -- true cuando los atributos del jugador ya reflejan su perfil guardado.
 function PlayerData.isLoaded(player: Player): boolean
 	return player:GetAttribute("DataLoaded") == true
+end
+
+-- Suma Maldad (nunca resta ni acepta NaN/infinito). Solo con el perfil ya cargado. Guarda al momento:
+-- la calificación se otorga al terminar la partida y no debe perderse por un cierre del servidor.
+-- Devuelve el nuevo total, o nil si no se pudo.
+function PlayerData.addMaldad(player: Player, amount: number): number?
+	if type(amount) ~= "number" or amount ~= amount or amount <= 0 then
+		return nil
+	end
+	if not PlayerData.isLoaded(player) then
+		return nil
+	end
+
+	local current = player:GetAttribute("Maldad")
+	if type(current) ~= "number" then
+		current = 0
+	end
+	local total = math.clamp(math.floor(current + amount), 0, MAX_MALDAD)
+	player:SetAttribute("Maldad", total)
+	PlayerData.saveNow(player)
+	return total
+end
+
+-- Se gasta la Maldad al tocarle ser Killer: vuelve a 0 para que el puesto rote entre jugadores.
+function PlayerData.resetMaldad(player: Player): boolean
+	if not PlayerData.isLoaded(player) then
+		return false
+	end
+	player:SetAttribute("Maldad", 0)
+	PlayerData.saveNow(player)
+	return true
+end
+
+-- Opción "poder ser Killer". Solo con el perfil cargado y con un booleano real.
+function PlayerData.setKillerOptIn(player: Player, enabled: boolean): boolean
+	if type(enabled) ~= "boolean" or not PlayerData.isLoaded(player) then
+		return false
+	end
+	player:SetAttribute("KillerOptIn", enabled)
+	PlayerData.saveNow(player)
+	return true
+end
+
+-- Sin perfil cargado (atributo nil) cuenta como activada: es el valor por defecto
+function PlayerData.isKillerOptIn(player: Player): boolean
+	return player:GetAttribute("KillerOptIn") ~= false
+end
+
+function PlayerData.getMaldad(player: Player): number
+	local value = player:GetAttribute("Maldad")
+	return if type(value) == "number" then value else 0
 end
 
 -- Guardado inmediato (p. ej. tras una compra), sin liberar la sesión.

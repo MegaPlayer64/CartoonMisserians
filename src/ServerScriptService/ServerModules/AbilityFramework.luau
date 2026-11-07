@@ -22,6 +22,8 @@
 	El framework maneja el registro, verificacion y ejecucion de habilidades.
 ]]
 
+local MatchStats = require(script.Parent.MatchStats)
+
 local AbilityFramework = {}
 
 -- Tabla de habilidades registradas: [abilityName] = abilityDefinition
@@ -248,6 +250,9 @@ function AbilityFramework.Execute(player, abilityName, character, targetData)
 			abilityState.charges = math.min(abilityState.charges + 1, abilityDef.MaxCharges)
 		end
 	end)
+
+	-- Estadísticas de partida: una habilidad usada con éxito
+	MatchStats.add(player, "abilitiesUsed", 1)
 
 	return true, "Executed"
 end

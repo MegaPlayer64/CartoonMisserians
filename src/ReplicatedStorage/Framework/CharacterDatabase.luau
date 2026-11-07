@@ -18,6 +18,7 @@ CharacterDatabase.CharacterType = {
 CharacterDatabase.Toonflows = {
 	{
 		Name = "Brothercat",
+		Archetype = "Survivalist", -- Sentinel / Survivalist / Support (duración del LMS)
 		DisplayName = "Brothercat",
 		Description = "El Toonflow equilibrado. Bueno para principiantes.",
 		Color = Color3.fromRGB(100, 150, 255),  -- Azul
@@ -32,6 +33,7 @@ CharacterDatabase.Toonflows = {
 	},
 	{
 		Name = "TobyWilliams",
+		Archetype = "Sentinel", -- Sentinel / Survivalist / Support (duración del LMS)
 		DisplayName = "Toby Williams",
 		Description = "Toonflow Sentinel. Habilidades de control y trampas.",
 		Color = Color3.fromRGB(100, 255, 150),  -- Verde claro
@@ -52,6 +54,7 @@ CharacterDatabase.Toonflows = {
 	},
 	{
 		Name = "Takorita",
+		Archetype = "Support", -- Sentinel / Survivalist / Support (duración del LMS)
 		DisplayName = "Takorita & Announcer",
 		Description = "Toonflow Support. Curacion canalizada y disrupcion sonora.",
 		Color = Color3.fromRGB(255, 182, 193),  -- Rosa pastel
@@ -66,6 +69,7 @@ CharacterDatabase.Toonflows = {
 	},
 	{
 		Name = "Deerphina",
+		Archetype = "Support", -- Sentinel / Survivalist / Support (duración del LMS)
 		DisplayName = "Deerphina",
 		Description = "Una ciervo misteriosa. Embiste, aturde con sus cuernos y comparte galletas curativas.",
 		Color = Color3.fromRGB(180, 110, 50), -- Marrón ciervo
@@ -186,6 +190,7 @@ CharacterDatabase.DefaultDevilish = "Stan.oma.png"
 -- Trunks y Neuro/Blazer
 table.insert(CharacterDatabase.Toonflows, {
 	Name = "Trunks",
+	Archetype = "Sentinel", -- Sentinel / Survivalist / Support (duración del LMS)
 	DisplayName = "Trunks",
 	Description = "Toonflow Sentinel. Espada Z, Rafagas de Ki y transformacion Super Sayajin.",
 	Color = Color3.fromRGB(255, 215, 0),

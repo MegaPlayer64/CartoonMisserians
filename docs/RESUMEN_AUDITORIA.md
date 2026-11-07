@@ -50,7 +50,7 @@ abre cada PR contra la rama anterior y mézclalos en este orden:
 - Tienda: comprar/equipar varias veces no ralentiza; la música de persecución no se corta cada 5 s.
 
 **Móvil** (Test → Device; toca una vez para activar)
-- Sin solapes entre la cuadrícula de habilidades, el salto y el botón de emotes (ajusta `JUMP_CLEARANCE` / `EDGE_MARGIN`).
+- Sin solapes entre la cuadrícula de habilidades y el botón de emotes (ajusta `EDGE_MARGIN`; el salto ya no existe).
 - Habilidades apuntan hacia la cámara; ATACAR (Devilish) repite al mantener; CORRER es un interruptor.
 - El panel de selección de personaje cabe en pantalla y se cierra tocando fuera.
 

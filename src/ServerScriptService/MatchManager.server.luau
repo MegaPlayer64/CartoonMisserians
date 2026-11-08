@@ -806,6 +806,7 @@ local function runInProgress()
 
 	broadcastMatchState(currentMatchState, {
 		timer = computeExitOpenAt(), -- segundos hasta que se abre la salida (se acorta con las tareas)
+		tasks = { completed = tasksCompleted, total = totalTaskCount },
 		message = "¡La partida ha comenzado!",
 		aliveToons = aliveToons,
 	})
@@ -828,6 +829,7 @@ local function runInProgress()
 					broadcastMatchState(currentMatchState, {
 						timer = math.max(0, computeExitOpenAt() - matchElapsed),
 						aliveToons = aliveToons,
+						tasks = { completed = tasksCompleted, total = totalTaskCount },
 					})
 				end
 			end,
@@ -947,6 +949,7 @@ local function runInProgress()
 			broadcastMatchState(currentMatchState, {
 				timer = math.max(0, computeExitOpenAt() - elapsed),
 				aliveToons = aliveToons,
+				tasks = { completed = tasksCompleted, total = totalTaskCount },
 			})
 		end
 	end

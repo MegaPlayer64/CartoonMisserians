@@ -52,6 +52,15 @@ local function applyUIVisibility(matchState)
 	local GameGUI = PlayerGui:FindFirstChild("GameGUI")
 	local GlobalGUI = PlayerGui:FindFirstChild("GlobalGUI")
 
+	-- Con ResetOnSpawn = true (el valor por defecto de un ScreenGui) las GUI se destruyen y se vuelven a clonar
+	-- cada vez que el servidor reemplaza tu personaje (al empezar la partida): sus scripts arrancan de cero y
+	-- pierden mensajes de un solo envío (rol, progreso de tareas...). Se desactiva aquí para las GUI de juego.
+	for _, gui in ipairs({ LobbyGUI, GameGUI, GlobalGUI }) do
+		if gui then
+			gui.ResetOnSpawn = false
+		end
+	end
+
 	-- Mantener GlobalGUI siempre activo para temporizadores y controles táctiles
 	if GlobalGUI then
 		GlobalGUI.Enabled = true

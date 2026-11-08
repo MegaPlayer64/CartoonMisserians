@@ -123,6 +123,25 @@ local currentRole = nil          -- "Toonflow" / "Devilish" (el atributo Role vi
 local exitActive = false         -- true mientras la salida está abierta (el reloj lo manda ExitTimer)
 local progressInitialized = false -- el servidor reenvía InProgress cada 5 s: preparar la UI solo una vez
 
+-- El rol llega UNA vez (RoleAssigned). Si GameGUI se reclona al empezar la partida (ResetOnSpawn) ese mensaje
+-- se pierde y currentRole queda en nil; el servidor deja el rol también en el Character, que siempre está.
+local function getRole()
+	if currentRole then return currentRole end
+	local character = player.Character
+	return character and character:GetAttribute("Role") or nil
+end
+
+-- Contador de tareas: lo usan el evento TaskProgress y las repeticiones de InProgress (ver más abajo)
+local function applyTaskProgress(completed, total)
+	if typeof(completed) ~= "number" or typeof(total) ~= "number" then return end
+	if taskFrame and getRole() == "Toonflow" then
+		taskFrame.Visible = true
+	end
+	if taskProgressLabel then
+		taskProgressLabel.Text = "TAREAS: " .. completed .. "/" .. total
+	end
+end
+
 local function stopTimer()
 	if matchTimerThread then
 		task.cancel(matchTimerThread)
@@ -280,7 +299,7 @@ local function updateAllyList()
 	-- Un Toonflow solo ve como aliados a otros Toonflows en partida (antes aparecía
 	-- también el Devilish, con su retrato y su porcentaje de vida).
 	local function isAlly(otherPlayer)
-		if currentRole ~= "Toonflow" then return true end
+		if getRole() ~= "Toonflow" then return true end
 		local otherChar = otherPlayer.Character
 		return otherChar ~= nil and otherChar:GetAttribute("Role") == "Toonflow"
 	end
@@ -514,10 +533,27 @@ MatchStateRemote.OnClientEvent:Connect(function(state, data)
 			startTimer(data.timer or data.duration)
 		end
 
+		-- El servidor repite el progreso de tareas con cada InProgress: si el HUD se reclonó y se perdió el
+		-- TaskProgress original, el contador se recupera solo (antes quedaba vacío hasta la siguiente tarea)
+		if data and typeof(data.tasks) == "table" then
+			applyTaskProgress(data.tasks.completed, data.tasks.total)
+		end
+
 		-- El servidor repite InProgress cada 5 s solo para sincronizar el reloj: la lista de
 		-- aliados, la barra de recursos y el icono se preparan una vez por partida.
 		if not progressInitialized then
 			progressInitialized = true
+
+			-- Rol, habilidades y banner: si RoleAssigned se perdió (GUI reclonada) se reconstruyen desde el Character
+			if not currentRole then
+				local roleChar = player.Character
+				local roleValue = roleChar and roleChar:GetAttribute("Role")
+				local roleName = roleChar and roleChar:GetAttribute("CharacterName")
+				if roleValue and roleName then
+					updateRoleMapping({ role = roleValue, characterName = roleName })
+				end
+			end
+
 			updateAllyList()
 
 			local char = player.Character
@@ -586,15 +622,8 @@ end
 
 if TaskProgressRemote then
 	TaskProgressRemote.OnClientEvent:Connect(function(data)
-		if data and data.completed and data.total then
-			-- (antes: player:GetAttribute("Role"), que siempre es nil porque el rol vive en el
-			-- Character: el Devilish veía el contador de tareas tras la primera tarea)
-			if taskFrame and currentRole == "Toonflow" then
-				taskFrame.Visible = true
-			end
-			if taskProgressLabel then
-				taskProgressLabel.Text = "TAREAS: " .. data.completed .. "/" .. data.total
-			end
+		if typeof(data) == "table" then
+			applyTaskProgress(data.completed, data.total)
 		end
 	end)
 end
